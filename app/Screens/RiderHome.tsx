@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Check, X } from 'phosphor-react-native';
 import OrderRequestCard from '../../components/OrderRequestCard';
-import { Order, RecentOrder } from '../../types/order';
+import ReportOrderIssueModal from '../../components/ReportOrderIssueModal';
+import { Order, OrderIssueReason, RecentOrder } from '../../types/order';
 
 const NEW_ORDER: Order = {
   id: 'LPG-2842',
@@ -26,6 +27,7 @@ const RECENT_ORDERS: RecentOrder[] = [
 
 export default function RiderHome({ navigation }) {
   const [pendingOrder, setPendingOrder] = useState<Order | null>(NEW_ORDER);
+  const [showFlagModal, setShowFlagModal] = useState(false);
 
   const handleAccept = () => {
     if (!pendingOrder) return;
@@ -34,6 +36,13 @@ export default function RiderHome({ navigation }) {
   };
 
   const handleDecline = () => {
+    setPendingOrder(null);
+  };
+
+  const handleFlagBeforeAccept = (reasons: OrderIssueReason[], description?: string) => {
+    // Flagging an order the rider hasn't accepted yet is equivalent to
+    // declining it, just with the reason recorded for the customer.
+    setShowFlagModal(false);
     setPendingOrder(null);
   };
 
@@ -57,9 +66,17 @@ export default function RiderHome({ navigation }) {
             order={pendingOrder}
             onAccept={handleAccept}
             onDecline={handleDecline}
+            onFlag={() => setShowFlagModal(true)}
           />
         </View>
       )}
+
+      <ReportOrderIssueModal
+        visible={showFlagModal}
+        customerName={pendingOrder?.customerName ?? 'Customer'}
+        onCancel={() => setShowFlagModal(false)}
+        onSubmit={handleFlagBeforeAccept}
+      />
 
       <View style={{ gap: 12 }}>
         <Text style={styles.sectionTitle}>Recent Orders</Text>

@@ -7,6 +7,7 @@ import {
   FuelPumpIcon,
   MapPinDuotoneIcon,
   DashedDivider,
+  FlagIcon,
 } from './icons/OrderCardIcons';
 
 interface OrderRequestCardProps {
@@ -14,6 +15,7 @@ interface OrderRequestCardProps {
   onAccept: () => void;
   onDecline: () => void;
   onViewLocation?: () => void;
+  onFlag?: () => void;
 }
 
 export default function OrderRequestCard({
@@ -21,6 +23,7 @@ export default function OrderRequestCard({
   onAccept,
   onDecline,
   onViewLocation,
+  onFlag,
 }: OrderRequestCardProps) {
   return (
     <View style={styles.outer}>
@@ -95,6 +98,11 @@ export default function OrderRequestCard({
         </View>
 
         <View style={styles.actionsRow}>
+          {onFlag && (
+            <TouchableOpacity style={styles.flagButton} onPress={onFlag}>
+              <FlagIcon />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.declineButton} onPress={onDecline}>
             <Text style={styles.declineText}>Decline</Text>
           </TouchableOpacity>
@@ -224,6 +232,21 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  flagButton: {
+    width: 44,
+    height: 44,
+    backgroundColor: '#fff',
+    borderWidth: 0.5,
+    borderColor: 'rgba(0,0,0,0.1)',
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: 'rgba(12,12,13,0.15)',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   declineButton: {
     flex: 1,

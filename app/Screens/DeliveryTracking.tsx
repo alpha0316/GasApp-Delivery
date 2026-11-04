@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { AnimatedRegion, Marker, MarkerAnimated, Polyline } from 'react-native-maps';
 import BackButton from '../../components/BackButton';
 import TrackingOrderCard from '../../components/TrackingOrderCard';
 import MapLocationMarker from '../../components/MapLocationMarker';
@@ -8,9 +8,14 @@ import BikeRiderMarker from '../../components/BikeRiderMarker';
 import NewOrderRequestModal from '../../components/NewOrderRequestModal';
 import DeliveryCompleteModal from '../../components/DeliveryCompleteModal';
 import OrderQueueRow from '../../components/OrderQueueRow';
-import { MapPinDuotoneIcon } from '../../components/icons/OrderCardIcons';
-import { DeliveryStage, LatLng, Order, QueueOrder } from '../../types/order';
-import { fetchRoadRoute } from '../../utils/routing';
+import ReportOrderIssueModal, { ORDER_ISSUE_REASON_LABELS } from '../../components/ReportOrderIssueModal';
+import { MapPinDuotoneIcon, WarningIcon } from '../../components/icons/OrderCardIcons';
+import { DeliveryStage, LatLng, Order, OrderIssue, OrderIssueReason, QueueOrder } from '../../types/order';
+import { bearingBetween, fetchRoadRoute } from '../../utils/routing';
+
+// How long the bike takes to glide across a whole active-leg route,
+// regardless of how many road-snapped waypoints OSRM returned for it.
+const ROUTE_TRAVEL_DURATION_MS = 10000;
 
 // Real journey has three legs:
 // 1. Rider goes to the customer to collect the empty cylinder.
@@ -90,6 +95,9 @@ export default function DeliveryTracking({ navigation, route }) {
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [queuedOrder, setQueuedOrder] = useState<Order | null>(null);
+  const [showIssueModal, setShowIssueModal] = useState(false);
+  const [orderIssue, setOrderIssue] = useState<OrderIssue | null>(null);
+  const [showQueuedFlagModal, setShowQueuedFlagModal] = useState(false);
 
   const [queue, setQueue] = useState<QueueOrder[]>(() => {
     const incoming: QueueOrder[] = route?.params?.orders ?? [];
@@ -122,7 +130,8 @@ export default function DeliveryTracking({ navigation, route }) {
   }, [phase, isBatch]);
 
   const upNextOrder = queue.find((o) => o.status === 'up_next') ?? queue[0];
-  const allDelivered = isBatch && queue.length > 0 && queue.every((o) => o.status === 'delivered');
+  const allDelivered =
+    isBatch && queue.length > 0 && queue.every((o) => o.status === 'delivered' || o.status === 'flagged');
 
   const batchStationOrder: Order = useMemo(
     () => ({
@@ -163,6 +172,18 @@ export default function DeliveryTracking({ navigation, route }) {
     }),
     [activeOrder]
   );
+
+  // Animated marker coordinate the bike icon actually renders at, plus the
+  // heading it should face, both driven by the route-walking effect below.
+  const riderRegion = useRef(
+    new AnimatedRegion({
+      latitude: riderPosition.latitude,
+      longitude: riderPosition.longitude,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+    })
+  ).current;
+  const [riderHeading, setRiderHeading] = useState(0);
 
   const stationLocation = isBatch ? FILLING_STATION.location : order.pickupLocation;
   const stationName = isBatch ? FILLING_STATION.name : order.fillingStationName;
@@ -209,12 +230,67 @@ export default function DeliveryTracking({ navigation, route }) {
     activeOrder.dropoffLocation.longitude,
   ]);
 
+  // Walk the bike marker through each road-snapped waypoint of the active
+  // route in turn, rather than snapping straight to the leg's target, so it
+  // visibly rides along the street network.
+  useEffect(() => {
+    if (activeRouteCoords.length < 2) return;
+
+    let cancelled = false;
+    const segmentDuration = Math.max(80, ROUTE_TRAVEL_DURATION_MS / (activeRouteCoords.length - 1));
+
+    riderRegion.setValue({
+      latitude: activeRouteCoords[0].latitude,
+      longitude: activeRouteCoords[0].longitude,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+    });
+
+    let index = 0;
+    const advance = () => {
+      if (cancelled || index >= activeRouteCoords.length - 1) return;
+      const from = activeRouteCoords[index];
+      const to = activeRouteCoords[index + 1];
+      setRiderHeading(bearingBetween(from, to));
+      // react-native-maps' .timing() type declares a `toValue`-based config
+      // (copied from Animated.timing) but the actual implementation expects
+      // flat latitude/longitude fields, so this cast matches runtime behavior.
+      riderRegion
+        .timing({
+          latitude: to.latitude,
+          longitude: to.longitude,
+          latitudeDelta: 0,
+          longitudeDelta: 0,
+          duration: segmentDuration,
+          useNativeDriver: false,
+        } as unknown as Parameters<typeof riderRegion.timing>[0])
+        .start(({ finished }) => {
+          if (finished && !cancelled) {
+            index += 1;
+            advance();
+          }
+        });
+    };
+    advance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRouteCoords, riderRegion]);
+
   const handleAcceptQueued = () => {
     setQueuedOrder(QUEUED_ORDER);
     setShowNewOrderModal(false);
   };
 
   const handleDeclineQueued = () => {
+    setShowNewOrderModal(false);
+  };
+
+  const handleFlagQueuedBeforeAccept = (_reasons: OrderIssueReason[], _description?: string) => {
+    // Flagging a not-yet-accepted order is equivalent to declining it, with
+    // the reason recorded for the customer instead of the rider.
+    setShowQueuedFlagModal(false);
     setShowNewOrderModal(false);
   };
 
@@ -238,6 +314,25 @@ export default function DeliveryTracking({ navigation, route }) {
   useEffect(() => {
     if (allDelivered) setShowCompleteModal(true);
   }, [allDelivered]);
+
+  const handleReportIssue = (reasons: OrderIssueReason[], description?: string) => {
+    const issue: OrderIssue = { reasons, description, reportedAt: new Date().toISOString() };
+    if (isBatch) {
+      if (!upNextOrder) return;
+      setQueue((prev) => {
+        const currentIndex = prev.findIndex((o) => o.id === upNextOrder.id);
+        const nextQueuedIndex = prev.findIndex((o, i) => i > currentIndex && o.status === 'queued');
+        return prev.map((o, i) => {
+          if (o.id === upNextOrder.id) return { ...o, status: 'flagged', issue };
+          if (i === nextQueuedIndex) return { ...o, status: 'up_next' };
+          return o;
+        });
+      });
+    } else {
+      setOrderIssue(issue);
+    }
+    setShowIssueModal(false);
+  };
 
   const handlePrimaryAction = () => {
     if (isBatch) {
@@ -304,9 +399,9 @@ export default function DeliveryTracking({ navigation, route }) {
               </Marker>
             )}
         {/* Rider */}
-        <Marker coordinate={riderPosition} title="You" anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges>
-          <BikeRiderMarker />
-        </Marker>
+        <MarkerAnimated coordinate={riderRegion as any} title="You" anchor={{ x: 0.5, y: 0.5 }}>
+          <BikeRiderMarker rotation={riderHeading} />
+        </MarkerAnimated>
 
         {/* Overall trip reference: station <-> customer (road-snapped) */}
         <Polyline
@@ -337,6 +432,14 @@ export default function DeliveryTracking({ navigation, route }) {
               <View style={styles.queueHandle} />
               <View style={styles.queueHeaderRow}>
                 <Text style={styles.queueTitle}>Order Queue</Text>
+                {!!upNextOrder && (
+                  <TouchableOpacity
+                    style={styles.reportIssueIconButton}
+                    onPress={() => setShowIssueModal(true)}
+                  >
+                    <WarningIcon />
+                  </TouchableOpacity>
+                )}
               </View>
               <View style={styles.queueList}>
                 {queue.map((o, index) => (
@@ -348,7 +451,12 @@ export default function DeliveryTracking({ navigation, route }) {
               </View>
             </View>
           ) : (
-            <TrackingOrderCard order={batchStationOrder} stage="filling" steps={['arrived', 'filling', 'completed']} />
+            <TrackingOrderCard
+              order={batchStationOrder}
+              stage="filling"
+              steps={['arrived', 'filling', 'completed']}
+              onReportIssue={() => setShowIssueModal(true)}
+            />
           )
         ) : (
           <TrackingOrderCard
@@ -357,27 +465,55 @@ export default function DeliveryTracking({ navigation, route }) {
             steps={steps}
             showContactRow={showContactRow}
             activeProgress={phase === 'toUserPickup' ? pickupProgress : undefined}
+            onReportIssue={!orderIssue ? () => setShowIssueModal(true) : undefined}
           />
         )}
 
-        {(isBatch ? !!upNextOrder : !!singleButtonLabel) && (
-          <TouchableOpacity style={styles.completeButton} onPress={handlePrimaryAction}>
-            <Text style={styles.completeButtonText}>
-              {isBatch
-                ? batchDelivering
-                  ? 'Complete Delivery'
-                  : 'Start Filling'
-                : singleButtonLabel}
-            </Text>
-          </TouchableOpacity>
+        {!isBatch && orderIssue ? (
+          <View style={styles.issueBanner}>
+            <WarningIcon />
+            <View style={styles.issueBannerTextGroup}>
+              <Text style={styles.issueBannerTitle}>Waiting on customer</Text>
+              <Text style={styles.issueBannerSubtitle}>
+                {orderIssue.reasons.map((r) => ORDER_ISSUE_REASON_LABELS[r]).join(' · ')}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          (isBatch ? !!upNextOrder : !!singleButtonLabel) && (
+            <TouchableOpacity style={styles.completeButton} onPress={handlePrimaryAction}>
+              <Text style={styles.completeButtonText}>
+                {isBatch
+                  ? batchDelivering
+                    ? 'Complete Delivery'
+                    : 'Start Filling'
+                  : singleButtonLabel}
+              </Text>
+            </TouchableOpacity>
+          )
         )}
       </View>
+
+      <ReportOrderIssueModal
+        visible={showIssueModal}
+        customerName={isBatch ? upNextOrder?.customerName ?? 'Customer' : order.customerName}
+        onCancel={() => setShowIssueModal(false)}
+        onSubmit={handleReportIssue}
+      />
 
       <NewOrderRequestModal
         visible={showNewOrderModal}
         order={QUEUED_ORDER}
         onAccept={handleAcceptQueued}
         onDecline={handleDeclineQueued}
+        onFlag={() => setShowQueuedFlagModal(true)}
+      />
+
+      <ReportOrderIssueModal
+        visible={showQueuedFlagModal}
+        customerName={QUEUED_ORDER.customerName}
+        onCancel={() => setShowQueuedFlagModal(false)}
+        onSubmit={handleFlagQueuedBeforeAccept}
       />
 
       <DeliveryCompleteModal
@@ -445,6 +581,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   queueHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
   queueTitle: {
@@ -485,5 +624,38 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 15,
+  },
+  reportIssueIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(180,35,24,0.3)',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  issueBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: '#FEF3F2',
+    borderWidth: 1,
+    borderColor: '#FECDCA',
+  },
+  issueBannerTextGroup: {
+    flex: 1,
+    gap: 2,
+  },
+  issueBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#B42318',
+  },
+  issueBannerSubtitle: {
+    fontSize: 12,
+    color: 'rgba(180,35,24,0.8)',
   },
 });

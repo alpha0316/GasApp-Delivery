@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, Linking } from 'react-native';
-import { ArrowDownIcon, PhoneCallDuotoneIcon } from './icons/OrderCardIcons';
+import { ArrowDownIcon, PhoneCallDuotoneIcon, WarningIcon } from './icons/OrderCardIcons';
 import StatusTimeline from './StatusTimeline';
 import { DeliveryStage, Order } from '../types/order';
 
@@ -10,6 +10,7 @@ interface TrackingOrderCardProps {
   steps?: DeliveryStage[];
   showContactRow?: boolean;
   activeProgress?: number;
+  onReportIssue?: () => void;
 }
 
 export default function TrackingOrderCard({
@@ -18,6 +19,7 @@ export default function TrackingOrderCard({
   steps,
   showContactRow = false,
   activeProgress,
+  onReportIssue,
 }: TrackingOrderCardProps) {
   return (
     <View style={styles.outer}>
@@ -28,6 +30,11 @@ export default function TrackingOrderCard({
         </TouchableOpacity>
         <View style={styles.headerRight}>
           <Text style={styles.tip}>+ ₵ {order.tip ?? 0}</Text>
+          {onReportIssue && (
+            <TouchableOpacity style={styles.issueButton} onPress={onReportIssue}>
+              <WarningIcon />
+            </TouchableOpacity>
+          )}
           <ArrowDownIcon />
         </View>
       </View>
@@ -107,6 +114,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#34C759',
+  },
+  issueButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(180,35,24,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   card: {
     backgroundColor: '#fff',

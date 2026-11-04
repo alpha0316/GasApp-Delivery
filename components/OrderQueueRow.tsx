@@ -7,6 +7,7 @@ const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; 
   up_next: { bg: '#EFF8FF', border: '#B2DDFF', text: '#175CD3', label: 'Up Next' },
   filled: { bg: '#EFF8FF', border: '#B2DDFF', text: '#175CD3', label: 'Filled' },
   queued: { bg: '#F4F4F4', border: 'rgba(0,0,0,0.1)', text: 'rgba(0,0,0,0.5)', label: 'Queued' },
+  flagged: { bg: '#FEF3F2', border: '#FECDCA', text: '#B42318', label: 'Needs Changes' },
 };
 
 interface OrderQueueRowProps {

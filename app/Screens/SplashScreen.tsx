@@ -14,7 +14,7 @@ export default function SplashScreen() {
       let result=await SecureStore.getItemAsync("token")
       console.log(result)
       if(result){
-        navigation.navigate("Home");
+        navigation.navigate("RiderHome");
       }
       else{
         navigation.navigate('PhoneNumber');

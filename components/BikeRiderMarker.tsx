@@ -8,7 +8,13 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ICON_SIZE = Math.max(28, Math.min(44, SCREEN_WIDTH * 0.1));
 const RING_MAX_SIZE = ICON_SIZE * 2.4;
 
-export default function BikeRiderMarker() {
+type Props = {
+  // Compass heading in degrees (0 = north) the bike icon should face,
+  // kept in sync with the rider's direction of travel along the route.
+  rotation?: number;
+};
+
+export default function BikeRiderMarker({ rotation = 0 }: Props) {
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -48,7 +54,7 @@ export default function BikeRiderMarker() {
       >
         <Image
           source={require('../assets/images/order-card/bike-rider.png')}
-          style={{ width: ICON_SIZE, height: ICON_SIZE }}
+          style={{ width: ICON_SIZE, height: ICON_SIZE, transform: [{ rotate: `${rotation}deg` }] }}
           resizeMode="contain"
         />
       </View>

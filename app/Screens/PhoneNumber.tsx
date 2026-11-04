@@ -4,6 +4,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import BackButton from '../../components/BackButton';
 import axios from 'axios';
 import OTPVerification from './OTPVerification';
+import { BYPASS_BACKEND_AUTH } from '../../config/devFlags';
 // import * as SecureStore from 'expo-secure-store';
 
 
@@ -25,8 +26,22 @@ const PhoneNumber = ({ navigation, route }) => {
       alert("Please enter a valid phone number.");
       return;
     }
-  
 
+    if (BYPASS_BACKEND_AUTH) {
+      // No live backend yet — skip straight to OTP entry with mock
+      // verification params. userExists: false walks through the full
+      // new-rider onboarding (FullName -> ProfilePhoto); flip to true here
+      // to exercise the returning-rider path instead.
+      navigation.navigate('OTPVerification', {
+        verificationId: phoneNumber,
+        prefix: '',
+        requestId: 'dev-bypass',
+        userExists: false,
+      });
+      return;
+    }
+
+    try {
       const response = await fetch(`${BASE_CUSTOMER_URL}/api/auth/sendOTP`, {
         method: "POST",
         headers: {
@@ -35,27 +50,18 @@ const PhoneNumber = ({ navigation, route }) => {
         body: JSON.stringify({
           phoneNumber: phoneNumber,
           account_type: "rider",
-   
         }),
       });
-
-      // const data = await response.json();
 
       const data = await response.json();
       const userExists = data.userExists
       const { prefix, requestId } = data.data.data || {};
 
-      
       navigation.navigate('OTPVerification', { verificationId: phoneNumber, prefix, requestId, userExists });
       setVerificationId(data.verificationId);
-      // console.log(userExists) 
-
-      
-      // console.error('Error requesting OTP:', error);
+    } catch (error) {
       Alert.alert('Error', error.message || 'Could not send OTP.');
-
-
-  
+    }
   };
   
 

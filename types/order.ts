@@ -7,6 +7,17 @@ export interface LatLng {
   longitude: number;
 }
 
+// Reasons a rider can flag an order back to the customer for changes,
+// e.g. the size/product no longer matches what's actually available.
+// A single flag can carry more than one reason at once.
+export type OrderIssueReason = 'wrong_size' | 'wrong_pickup' | 'station_closed' | 'no_lpg' | 'other';
+
+export interface OrderIssue {
+  reasons: OrderIssueReason[];
+  description?: string;
+  reportedAt: string;
+}
+
 export interface Order {
   id: string;
   customerName: string;
@@ -20,6 +31,7 @@ export interface Order {
   pickupLocation: LatLng;
   dropoffLocation: LatLng;
   etaMinutes?: number;
+  issue?: OrderIssue;
 }
 
 export interface RecentOrder {
@@ -38,7 +50,7 @@ export interface RiderStats {
   rating: number;
 }
 
-export type QueueOrderStatus = 'queued' | 'up_next' | 'filled' | 'delivered';
+export type QueueOrderStatus = 'queued' | 'up_next' | 'filled' | 'delivered' | 'flagged';
 
 export interface QueueOrder {
   id: string;
@@ -50,4 +62,5 @@ export interface QueueOrder {
   tip?: number;
   dropoffLocation: LatLng;
   status: QueueOrderStatus;
+  issue?: OrderIssue;
 }

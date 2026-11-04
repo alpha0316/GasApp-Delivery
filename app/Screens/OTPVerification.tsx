@@ -6,6 +6,7 @@ import axios from 'axios';
 
 import * as SecureStore from 'expo-secure-store';
 import SplashScreen from './SplashScreen';
+import { BYPASS_BACKEND_AUTH } from '../../config/devFlags';
 
 const OTPVerification = ({ navigation, route }) => {
   const [otp, setOtp] = useState("");
@@ -47,6 +48,19 @@ const OTPVerification = ({ navigation, route }) => {
   // };
 
   const handleContinue = async () => {
+    if (BYPASS_BACKEND_AUTH) {
+      // No live backend yet — accept whatever was typed as the OTP and
+      // proceed as if verification succeeded.
+      await saveToken('dev-bypass-token');
+      Alert.alert('Success', 'Phone number verified!');
+      if (userExists) {
+        navigation.reset({ index: 0, routes: [{ name: 'RiderHome' }] });
+      } else {
+        navigation.navigate('FullName', { phoneNumber: verificationId });
+      }
+      return;
+    }
+
     try {
       const response = await fetch(`${BASE_CUSTOMER_URL}/api/auth/verifyOTP`, {
         method: "POST",
@@ -64,9 +78,13 @@ const OTPVerification = ({ navigation, route }) => {
   
       if (response.ok) {
         await saveToken(token);
-        // await saveToken(token, userExists, requestId); 
+        // await saveToken(token, userExists, requestId);
         Alert.alert("Success", "Phone number verified!");
-        navigation.navigate("Home");
+        if (userExists) {
+          navigation.reset({ index: 0, routes: [{ name: "RiderHome" }] });
+        } else {
+          navigation.navigate("FullName", { phoneNumber: verificationId });
+        }
         console.log("token")
       }
     } catch (error) {
@@ -78,6 +96,11 @@ const OTPVerification = ({ navigation, route }) => {
   
 
   const handleResendOTP = async () => {
+    if (BYPASS_BACKEND_AUTH) {
+      Alert.alert('OTP Resent', 'A new verification code has been sent to your phone.');
+      return;
+    }
+
     try {
       console.log(`Sending request to resend OTP with verification ID: ${verificationId} ` );
   

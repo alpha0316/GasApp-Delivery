@@ -8,9 +8,16 @@ interface NewOrderRequestModalProps {
   order: Order | null;
   onAccept: () => void;
   onDecline: () => void;
+  onFlag?: () => void;
 }
 
-export default function NewOrderRequestModal({ visible, order, onAccept, onDecline }: NewOrderRequestModalProps) {
+export default function NewOrderRequestModal({
+  visible,
+  order,
+  onAccept,
+  onDecline,
+  onFlag,
+}: NewOrderRequestModalProps) {
   if (!order) return null;
 
   return (
@@ -23,7 +30,7 @@ export default function NewOrderRequestModal({ visible, order, onAccept, onDecli
             You can queue this for after your current delivery or decline it.
           </Text>
 
-          <OrderRequestCard order={order} onAccept={onAccept} onDecline={onDecline} />
+          <OrderRequestCard order={order} onAccept={onAccept} onDecline={onDecline} onFlag={onFlag} />
         </View>
       </View>
     </Modal>
