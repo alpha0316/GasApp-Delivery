@@ -22,7 +22,6 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "googleServicesFile": "./android/app/google-services.json",
       "package": "com.deliveryapp.deliveryapp"
     },
     "web": {
