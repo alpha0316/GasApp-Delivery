@@ -27,3 +27,22 @@ android/app/build/
 
 expo-env.d.ts
 # @end expo-cli
+# Env files (keep the example tracked)
+.env
+.env.*
+!.env.example
+
+# Logs, coverage, editors
+*.log
+coverage/
+.idea/
+.vscode/
+
+# AI assistant docs
+CLAUDE.md
+AGENTS.md
+docs/
+
+# Generated native projects (expo prebuild)
+/ios/
+/android/

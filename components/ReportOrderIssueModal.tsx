@@ -75,8 +75,8 @@ export default function ReportOrderIssueModal({
             <View style={styles.titleTextGroup}>
               <Text style={styles.title}>Report an Issue</Text>
               <Text style={styles.subtitle}>
-                Select everything that applies. {customerName} will be asked to update this order before it
-                continues.
+                Select everything that applies. Support and {customerName} will be told about the
+                problem. {customerName} is asked to contact support.
               </Text>
             </View>
           </View>
@@ -110,6 +110,7 @@ export default function ReportOrderIssueModal({
               placeholder="Add any extra details for the customer..."
               placeholderTextColor="rgba(0,0,0,0.35)"
               multiline
+              maxLength={500}
               numberOfLines={3}
               value={description}
               onChangeText={setDescription}

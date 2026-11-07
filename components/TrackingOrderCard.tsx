@@ -3,9 +3,13 @@ import { View, Text, Image, StyleSheet, TouchableOpacity, Linking } from 'react-
 import { ArrowDownIcon, PhoneCallDuotoneIcon, WarningIcon } from './icons/OrderCardIcons';
 import StatusTimeline from './StatusTimeline';
 import { DeliveryStage, Order } from '../types/order';
+import { formatMinor } from '../lib/format/money';
+
+// The card also shows a batch, so it needs only these fields.
+export type TrackingCardOrder = Pick<Order, 'customerName' | 'customerPhone' | 'cylinderSize' | 'amount' | 'tip' | 'etaMinutes'>;
 
 interface TrackingOrderCardProps {
-  order: Order;
+  order: TrackingCardOrder;
   stage: DeliveryStage;
   steps?: DeliveryStage[];
   showContactRow?: boolean;
@@ -29,7 +33,7 @@ export default function TrackingOrderCard({
           <Text style={styles.phone}>{order.customerPhone}</Text>
         </TouchableOpacity>
         <View style={styles.headerRight}>
-          <Text style={styles.tip}>+ ₵ {order.tip ?? 0}</Text>
+          <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
           {onReportIssue && (
             <TouchableOpacity style={styles.issueButton} onPress={onReportIssue}>
               <WarningIcon />
@@ -51,7 +55,7 @@ export default function TrackingOrderCard({
             </View>
             <Text style={styles.sizeLabel}>{order.cylinderSize} Size</Text>
           </View>
-          <Text style={styles.amount}>₵ {order.amount}</Text>
+          <Text style={styles.amount}>₵ {formatMinor(order.amount)}</Text>
         </View>
 
         {showContactRow && (

@@ -1,3 +1,7 @@
+import type { IssueReason, OrderStatus, PaymentMethod } from '../lib/api/types';
+
+// View models used by the screens. They are built from backend orders in
+// features/orders/mappers.ts. Money fields are integer minor units (pesewas).
 export type CylinderSize = 'Small' | 'Medium' | 'Large';
 
 export type DeliveryStage = 'arrived' | 'filling' | 'completed';
@@ -7,31 +11,27 @@ export interface LatLng {
   longitude: number;
 }
 
-// Reasons a rider can flag an order back to the customer for changes,
-// e.g. the size/product no longer matches what's actually available.
-// A single flag can carry more than one reason at once.
-export type OrderIssueReason = 'wrong_size' | 'wrong_pickup' | 'station_closed' | 'no_lpg' | 'other';
-
-export interface OrderIssue {
-  reasons: OrderIssueReason[];
-  description?: string;
-  reportedAt: string;
-}
+// Reasons a rider can flag an order with. A single report can carry more than one reason.
+export type OrderIssueReason = IssueReason;
 
 export interface Order {
   id: string;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
   customerName: string;
   customerPhone: string;
   cylinderSize: CylinderSize;
   cylinderCount: number;
   amount: number;
   tip?: number;
+  total: number;
+  // Rider commission plus tip.
+  earnings: number;
   fillingStationName: string;
   dropoffAddress: string;
-  pickupLocation: LatLng;
-  dropoffLocation: LatLng;
+  stationLocation: LatLng | null;
+  customerLocation: LatLng;
   etaMinutes?: number;
-  issue?: OrderIssue;
 }
 
 export interface RecentOrder {
@@ -47,7 +47,7 @@ export interface RecentOrder {
 export interface RiderStats {
   todayDeliveries: number;
   totalEarned: number;
-  rating: number;
+  rating: number | null;
 }
 
 export type QueueOrderStatus = 'queued' | 'up_next' | 'filled' | 'delivered' | 'flagged';
@@ -60,7 +60,7 @@ export interface QueueOrder {
   cylinderSize: CylinderSize;
   amount: number;
   tip?: number;
-  dropoffLocation: LatLng;
+  estimatedEarnings: number;
+  customerLocation: LatLng;
   status: QueueOrderStatus;
-  issue?: OrderIssue;
 }

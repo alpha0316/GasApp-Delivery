@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SealCheckDuotoneIcon } from './icons/OrderCardIcons';
 import { RiderStats } from '../types/order';
+import { formatMinor } from '../lib/format/money';
 
 interface DeliveryCompleteModalProps {
   visible: boolean;
@@ -35,7 +36,7 @@ export default function DeliveryCompleteModal({
 
           <View style={styles.statsBox}>
             <View style={styles.earnedGroup}>
-              <Text style={styles.earnedAmount}>+ ₵ {earned}</Text>
+              <Text style={styles.earnedAmount}>+ ₵ {formatMinor(earned)}</Text>
               <Text style={styles.earnedLabel}>Earned From This Delivery</Text>
             </View>
 
@@ -45,11 +46,11 @@ export default function DeliveryCompleteModal({
                 <Text style={styles.statLabel}>Today</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>¢ {stats.totalEarned}</Text>
+                <Text style={styles.statValue}>₵ {formatMinor(stats.totalEarned)}</Text>
                 <Text style={styles.statLabel}>Total Earned</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.rating}★</Text>
+                <Text style={styles.statValue}>{stats.rating ?? '–'}★</Text>
                 <Text style={styles.statLabel}>Rating</Text>
               </View>
             </View>

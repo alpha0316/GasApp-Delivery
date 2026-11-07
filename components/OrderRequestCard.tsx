@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { Order } from '../types/order';
+import { formatMinor } from '../lib/format/money';
 import {
   ClipboardTextIcon,
   BoxIcon,
@@ -30,9 +31,9 @@ export default function OrderRequestCard({
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
           <Text style={styles.name}>{order.customerName}</Text>
-          <Text style={styles.phone}>{order.customerPhone}</Text>
+          {!!order.customerPhone && <Text style={styles.phone}>{order.customerPhone}</Text>}
         </View>
-        <Text style={styles.tip}>+ ₵ {order.tip ?? 0}</Text>
+        <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
       </View>
 
       <View style={styles.card}>
@@ -94,7 +95,7 @@ export default function OrderRequestCard({
             </View>
             <Text style={styles.sizeLabel}>{order.cylinderSize} Size</Text>
           </View>
-          <Text style={styles.amount}>₵ {order.amount}</Text>
+          <Text style={styles.amount}>₵ {formatMinor(order.amount)}</Text>
         </View>
 
         <View style={styles.actionsRow}>

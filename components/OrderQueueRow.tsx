@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { QueueOrder } from '../types/order';
+import { formatMinor } from '../lib/format/money';
 
 const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; label: string }> = {
   delivered: { bg: '#ECFDF3', border: '#ABEFC6', text: '#067647', label: 'Delivered' },
@@ -36,8 +37,8 @@ export default function OrderQueueRow({ index, order, variant }: OrderQueueRowPr
 
       {variant === 'price' ? (
         <View style={styles.priceCol}>
-          <Text style={styles.price}>¢ {order.amount}</Text>
-          <Text style={styles.tip}>+ ₵ {order.tip ?? 0}</Text>
+          <Text style={styles.price}>¢ {formatMinor(order.amount)}</Text>
+          <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
         </View>
       ) : (
         <View style={[styles.badge, { backgroundColor: badge.bg, borderColor: badge.border }]}>
