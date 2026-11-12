@@ -1,0 +1,66 @@
+import type { IssueReason, OrderStatus, PaymentMethod } from '../lib/api/types';
+
+// View models used by the screens. They are built from backend orders in
+// features/orders/mappers.ts. Money fields are integer minor units (pesewas).
+export type CylinderSize = 'Small' | 'Medium' | 'Large';
+
+export type DeliveryStage = 'arrived' | 'filling' | 'completed';
+
+export interface LatLng {
+  latitude: number;
+  longitude: number;
+}
+
+// Reasons a rider can flag an order with. A single report can carry more than one reason.
+export type OrderIssueReason = IssueReason;
+
+export interface Order {
+  id: string;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
+  customerName: string;
+  customerPhone: string;
+  cylinderSize: CylinderSize;
+  cylinderCount: number;
+  amount: number;
+  tip?: number;
+  total: number;
+  // Rider commission plus tip.
+  earnings: number;
+  fillingStationName: string;
+  dropoffAddress: string;
+  stationLocation: LatLng | null;
+  customerLocation: LatLng;
+  etaMinutes?: number;
+}
+
+export interface RecentOrder {
+  id: string;
+  customerName: string;
+  area: string;
+  size: CylinderSize;
+  amount: number;
+  status: 'completed' | 'cancelled';
+  time: string;
+}
+
+export interface RiderStats {
+  todayDeliveries: number;
+  totalEarned: number;
+  rating: number | null;
+}
+
+export type QueueOrderStatus = 'queued' | 'up_next' | 'filled' | 'delivered' | 'flagged';
+
+export interface QueueOrder {
+  id: string;
+  customerName: string;
+  customerPhone: string;
+  area: string;
+  cylinderSize: CylinderSize;
+  amount: number;
+  tip?: number;
+  estimatedEarnings: number;
+  customerLocation: LatLng;
+  status: QueueOrderStatus;
+}

@@ -1,0 +1,25 @@
+# GasApp Delivery
+
+Expo (expo-router) rider app for GasApp. Riders sign in, go online, accept orders from the pool, deliver them and track earnings.
+
+## Setup
+
+1. `npm install`
+2. Copy `.env.example` to `.env`. Set `EXPO_PUBLIC_API_URL` (includes `/api/v1`).
+3. Generate the native projects: `npx expo prebuild`. `ios/` and `android/` are generated and git-ignored.
+4. Run on a device: `npm run ios` or `npm run android`. The app needs a development build, not Expo Go.
+
+## Scripts
+
+- `npm run typecheck` runs `tsc --noEmit`.
+- `npm run lint` runs ESLint (expo config).
+- `npm test` runs Jest.
+
+## Structure
+
+- `app/` expo-router routes (thin).
+- `features/` auth, profile, orders, pool, delivery, earnings, location, notifications.
+- `lib/` API client, realtime, query client, secure storage, config.
+- `components/` shared UI.
+
+The backend contract is in the `gasapp-backend` repository: `docs/API.md` and `docs/FRONTEND_INTEGRATION.md`.
