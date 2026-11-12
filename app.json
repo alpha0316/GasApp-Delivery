@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "DeliveryApp",
-    "slug": "DeliveryApp",
+    "slug": "gas-app-rider",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
