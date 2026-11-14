@@ -39,6 +39,7 @@ export interface User {
   plateNumber?: string;
   photoUrl?: string;
   areaId?: string;
+  cylinderCapacity?: number;
   maxConcurrentOrders?: number;
   activeOrderCount: number;
   rating: number | null;
