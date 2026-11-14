@@ -12,7 +12,7 @@ export function nextRoute(user: User): OnboardingRoute {
   return '/home';
 }
 
-const APPROVED_ONLY_ROUTES = ['home', 'tracking', 'filling', 'batch', 'photo'];
+const APPROVED_ONLY_ROUTES = ['home', 'tracking', 'filling', 'batch', 'photo', 'earnings', 'profile'];
 
 // True when a rider who lost approval (suspended) is still on a screen for approved riders.
 export function mustLeaveForPending(user: User, firstSegment: string | undefined): boolean {

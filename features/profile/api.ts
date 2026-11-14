@@ -6,6 +6,7 @@ export interface ProfilePatch {
   plateNumber?: string;
   photoUrl?: string;
   areaId?: string;
+  cylinderCapacity?: number;
 }
 
 export const fetchProfile = () => api<{ rider: User; maxConcurrentOrders: number }>('/rider/profile');

@@ -84,9 +84,6 @@ export default function RiderHomeScreen() {
           <Text style={styles.greeting}>Hello {rider?.firstName || 'Rider'} 👋</Text>
           <Text style={styles.subGreeting}>Todays Bookings</Text>
         </View>
-        <TouchableOpacity onPress={() => router.push('/batch')}>
-          <Text style={styles.batchLink}>View Batch Order</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.onlineRow}>
@@ -160,7 +157,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 30,
-    paddingBottom: 40,
+    paddingBottom: 120,
     gap: 24,
   },
   headerRow: {
@@ -207,11 +204,6 @@ const styles = StyleSheet.create({
   poolMessage: {
     fontSize: 12,
     color: 'rgba(0,0,0,0.5)',
-  },
-  batchLink: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#0085FF',
   },
   sectionTitle: {
     fontSize: 16,
