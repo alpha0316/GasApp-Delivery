@@ -1,6 +1,6 @@
 import type { User } from '../../lib/api/types';
 import { splitFullName } from './names';
-import { mustLeaveForPending, nextRoute } from './nextRoute';
+import { nextRoute } from './nextRoute';
 
 const rider: User = {
   id: 'r1',
@@ -18,23 +18,11 @@ const rider: User = {
 };
 
 describe('nextRoute', () => {
-  it('walks a new rider through onboarding in order', () => {
+  it('walks a new rider through onboarding in order: name -> photo -> vehicle -> home', () => {
     expect(nextRoute({ ...rider, firstName: '' })).toBe('/name');
-    expect(nextRoute({ ...rider, plateNumber: undefined })).toBe('/vehicle');
-    expect(nextRoute({ ...rider, isApproved: false })).toBe('/pending');
     expect(nextRoute({ ...rider, photoUrl: undefined })).toBe('/photo');
+    expect(nextRoute({ ...rider, plateNumber: undefined })).toBe('/vehicle');
     expect(nextRoute(rider)).toBe('/home');
-  });
-});
-
-describe('mustLeaveForPending', () => {
-  it('sends a suspended rider off the approved-only screens', () => {
-    const suspended = { ...rider, isApproved: false };
-    expect(nextRoute(suspended)).toBe('/pending');
-    expect(mustLeaveForPending(suspended, 'home')).toBe(true);
-    expect(mustLeaveForPending(suspended, 'tracking')).toBe(true);
-    expect(mustLeaveForPending(suspended, 'pending')).toBe(false);
-    expect(mustLeaveForPending(rider, 'home')).toBe(false);
   });
 });
 

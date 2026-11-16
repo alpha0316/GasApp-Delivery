@@ -14,6 +14,10 @@ export default function PhoneNumberScreen() {
 
   const isButtonDisabled = phoneNumber.length < 10 || sending;
 
+  const handleChangePhoneNumber = (text: string) => {
+    setPhoneNumber(text.replace(/\D/g, '').slice(0, 10));
+  };
+
   const handleRequestOtp = async () => {
     if (phoneNumber.length < 10) {
       Alert.alert('Error', 'Please enter a valid phone number.');
@@ -52,7 +56,7 @@ export default function PhoneNumberScreen() {
             },
           ]}
           value={phoneNumber}
-          onChangeText={setPhoneNumber}
+          onChangeText={handleChangePhoneNumber}
           keyboardType="numeric"
           autoCapitalize="none"
           placeholder="Enter your phone number"

@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import BackButton from '../../../components/BackButton';
+import CancelOrderModal from '../../../components/CancelOrderModal';
 import TrackingOrderCard from '../../../components/TrackingOrderCard';
 import NewOrderRequestModal from '../../../components/NewOrderRequestModal';
 import DeliveryCompleteModal from '../../../components/DeliveryCompleteModal';
@@ -12,12 +13,14 @@ import { WarningIcon } from '../../../components/icons/OrderCardIcons';
 import { errorMessage } from '../../../lib/api/client';
 import { formatMinor } from '../../../lib/format/money';
 import type { ApiOrder } from '../../../lib/api/types';
+import type { CancelReason } from '../../../lib/orders/cancelReasons';
 import { DeliveryStage, LatLng, OrderIssueReason } from '../../../types/order';
 import { useEarnings } from '../../earnings/hooks';
 import { useLocationStore } from '../../location/store';
 import {
   useActiveOrders,
   useAdvanceOrder,
+  useCancelOrder,
   useCompleteDelivery,
   useFlaggedIds,
   useReportIssue,
@@ -27,6 +30,7 @@ import {
 import { phaseOf, type Phase } from '../../orders/flow';
 import { customerLatLng, stationLatLng, toOrderView } from '../../orders/mappers';
 import { useAcceptOrder, useDeclineOrder, usePool } from '../../pool/hooks';
+import { useOfferWindows } from '../../pool/useOfferWindows';
 import { deriveBatch } from '../batch';
 import TrackingMap from '../TrackingMap';
 import { useLegProgress, useRoutePath } from '../hooks';
@@ -51,7 +55,9 @@ const PHASE_CONFIG: Record<
     buttonLabel: 'Filled Up, Heading to Customer',
   },
   toUserDropoff: {
-    headerTitle: 'Heading to User Location',
+    // Section 2.3: "On the way" is the customer-facing label for this leg;
+    // distinct from toUserPickup's header so the two legs aren't identical.
+    headerTitle: 'On the Way to Customer',
     steps: ['filling', 'completed'],
     stage: 'completed',
     showContactRow: true,
@@ -76,6 +82,7 @@ export default function DeliveryTrackingScreen() {
   const advance = useAdvanceOrder();
   const completeDelivery = useCompleteDelivery();
   const reportIssue = useReportIssue();
+  const cancelOrder = useCancelOrder();
   const flaggedIds = useFlaggedIds();
   const position = useLocationStore((s) => s.position);
   const heading = useLocationStore((s) => s.heading);
@@ -86,6 +93,7 @@ export default function DeliveryTrackingScreen() {
 
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const sessionOrders = useMemo(
@@ -190,6 +198,15 @@ export default function DeliveryTrackingScreen() {
     });
   };
 
+  const handleCancelOrder = (reason: CancelReason) => {
+    if (!focusOrder) return;
+    setShowCancelModal(false);
+    void runAction(async () => {
+      await cancelOrder.mutateAsync({ orderId: focusOrder.id, reason });
+      router.replace('/home');
+    });
+  };
+
   const handleCloseComplete = () => {
     setShowCompleteModal(false);
     // Continue with the rest of the queue. Flagged orders stay active on the server but are skipped.
@@ -203,6 +220,7 @@ export default function DeliveryTrackingScreen() {
 
   const offer = !isBatch ? pool.data?.[0] : undefined;
   const offerView = offer ? toOrderView(offer, stations.data) : null;
+  const offerExpiresAt = useOfferWindows(offer ? [offer.id] : []);
 
   const handleAcceptOffer = async () => {
     if (!offer) return;
@@ -247,9 +265,11 @@ export default function DeliveryTrackingScreen() {
     : focusView;
 
   const { headerTitle: singleHeaderTitle, steps, stage, showContactRow, buttonLabel } = PHASE_CONFIG[phase];
-  const headerTitle = isBatch ? (batch.delivering ? 'Heading to User Location' : 'Heading to filling station') : singleHeaderTitle;
+  const headerTitle = isBatch ? (batch.delivering ? 'On the Way to Customer' : 'Heading to filling station') : singleHeaderTitle;
   const focusFlagged = !!flaggedIds[focusOrder.id];
   const canAct = isBatch ? batch.remaining.length > 0 : !!single && single.status !== 'delivered';
+  // Section 2.1, step 8: only cancellable before the cylinder is picked up.
+  const canCancel = focusOrder.status === 'rider_assigned';
 
   const batchEarned = sessionOrders.reduce((sum, o) => sum + (o.riderCommission ?? 0) + o.pricing.tip, 0);
   const completeEarned = isBatch ? batchEarned : focusView.earnings;
@@ -337,6 +357,12 @@ export default function DeliveryTrackingScreen() {
             </Text>
           </TouchableOpacity>
         )}
+
+        {canCancel && (
+          <TouchableOpacity style={styles.cancelOrderLink} onPress={() => setShowCancelModal(true)} disabled={busy}>
+            <Text style={styles.cancelOrderLinkText}>Cancel order</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ReportOrderIssueModal
@@ -346,9 +372,16 @@ export default function DeliveryTrackingScreen() {
         onSubmit={handleReportIssue}
       />
 
+      <CancelOrderModal
+        visible={showCancelModal}
+        onCancel={() => setShowCancelModal(false)}
+        onSubmit={handleCancelOrder}
+      />
+
       <NewOrderRequestModal
         visible={!!offerView}
         order={offerView}
+        offerExpiresAt={offer ? offerExpiresAt(offer.id) : new Date().toISOString()}
         onAccept={handleAcceptOffer}
         onDecline={handleDeclineOffer}
       />
@@ -473,6 +506,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 15,
+  },
+  cancelOrderLink: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  cancelOrderLinkText: {
+    color: '#B42318',
+    fontWeight: '600',
+    fontSize: 13,
   },
   reportIssueIconButton: {
     width: 32,

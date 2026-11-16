@@ -1,6 +1,6 @@
 import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
-import { House, User, Wallet } from 'phosphor-react-native';
+import { ClipboardText, House, User, Wallet } from 'phosphor-react-native';
 import React from 'react';
 import { Platform, StyleSheet } from 'react-native';
 
@@ -24,6 +24,15 @@ export default function TabsLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color, focused }) => <House size={24} color={color} weight={focused ? 'fill' : 'regular'} />,
+        }}
+      />
+      <Tabs.Screen
+        name="orders"
+        options={{
+          title: 'Orders',
+          tabBarIcon: ({ color, focused }) => (
+            <ClipboardText size={24} color={color} weight={focused ? 'fill' : 'regular'} />
+          ),
         }}
       />
       <Tabs.Screen

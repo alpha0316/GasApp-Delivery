@@ -6,6 +6,7 @@ import { Order } from '../types/order';
 interface NewOrderRequestModalProps {
   visible: boolean;
   order: Order | null;
+  offerExpiresAt: string;
   onAccept: () => void;
   onDecline: () => void;
   onFlag?: () => void;
@@ -14,6 +15,7 @@ interface NewOrderRequestModalProps {
 export default function NewOrderRequestModal({
   visible,
   order,
+  offerExpiresAt,
   onAccept,
   onDecline,
   onFlag,
@@ -30,7 +32,13 @@ export default function NewOrderRequestModal({
             You can queue this for after your current delivery or decline it.
           </Text>
 
-          <OrderRequestCard order={order} onAccept={onAccept} onDecline={onDecline} onFlag={onFlag} />
+          <OrderRequestCard
+            order={order}
+            offerExpiresAt={offerExpiresAt}
+            onAccept={onAccept}
+            onDecline={onDecline}
+            onFlag={onFlag}
+          />
         </View>
       </View>
     </Modal>

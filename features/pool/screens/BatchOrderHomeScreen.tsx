@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowDownIcon } from '../../../components/icons/OrderCardIcons';
 import OrderQueueRow from '../../../components/OrderQueueRow';
+import RiderStatusBanner from '../../../components/RiderStatusBanner';
 import { errorMessage } from '../../../lib/api/client';
 import { formatMinor } from '../../../lib/format/money';
 import { useAuthStore } from '../../auth/store';
@@ -70,6 +71,8 @@ export default function BatchOrderHomeScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      <RiderStatusBanner rider={rider} />
 
       <View style={styles.queueSection}>
         <View style={styles.queueHeaderRow}>
