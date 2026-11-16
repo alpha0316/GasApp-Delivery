@@ -1,49 +1,41 @@
 import React, { useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { CaretRight, SignOut, User as UserIcon } from 'phosphor-react-native';
 import { errorMessage } from '../../../lib/api/client';
-import type { VehicleType } from '../../../lib/api/types';
 import { useAuthStore } from '../../auth/store';
-import { useAreas, useUpdateProfile } from '../hooks';
-
-const VEHICLES: { value: VehicleType; label: string }[] = [
-  { value: 'motorbike', label: 'Motorbike' },
-  { value: 'tricycle', label: 'Tricycle' },
-  { value: 'car', label: 'Car' },
-  { value: 'bicycle', label: 'Bicycle' },
-];
-
-const CYLINDER_CAPACITIES = [1, 2, 3, 4, 5, 6];
+import VehicleForm, { type VehicleFormValue } from '../components/VehicleForm';
+import { useUpdateProfile } from '../hooks';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
-  const areas = useAreas();
   const updateProfile = useUpdateProfile();
 
-  const [vehicleType, setVehicleType] = useState<VehicleType | undefined>(user?.vehicleType);
-  const [plateNumber, setPlateNumber] = useState(user?.plateNumber ?? '');
-  const [areaId, setAreaId] = useState<string | undefined>(user?.areaId);
-  const [cylinderCapacity, setCylinderCapacity] = useState<number | undefined>(user?.cylinderCapacity);
+  const [value, setValue] = useState<VehicleFormValue>({
+    vehicleType: user?.vehicleType,
+    plateNumber: user?.plateNumber ?? '',
+    cylinderCapacity: user?.cylinderCapacity ?? 4,
+    areaId: user?.areaId,
+  });
 
-  const plateValid = plateNumber.trim().length >= 2 && plateNumber.trim().length <= 20;
+  const plateValid = value.plateNumber.trim().length >= 2 && value.plateNumber.trim().length <= 20;
   const dirty =
-    vehicleType !== user?.vehicleType ||
-    plateNumber.trim() !== (user?.plateNumber ?? '') ||
-    areaId !== user?.areaId ||
-    cylinderCapacity !== user?.cylinderCapacity;
+    value.vehicleType !== user?.vehicleType ||
+    value.plateNumber.trim() !== (user?.plateNumber ?? '') ||
+    value.areaId !== user?.areaId ||
+    value.cylinderCapacity !== user?.cylinderCapacity;
 
   const handleSave = async () => {
-    if (!vehicleType || !areaId || !plateValid) return;
+    if (!value.vehicleType || !value.areaId || !plateValid) return;
     try {
       await updateProfile.mutateAsync({
-        vehicleType,
-        areaId,
-        plateNumber: plateNumber.trim(),
-        cylinderCapacity,
+        vehicleType: value.vehicleType,
+        areaId: value.areaId,
+        plateNumber: value.plateNumber.trim(),
+        cylinderCapacity: value.cylinderCapacity,
       });
       Alert.alert('Saved', 'Your profile has been updated.');
     } catch (error) {
@@ -80,81 +72,11 @@ export default function ProfileScreen() {
           <CaretRight size={18} color="rgba(0,0,0,0.3)" />
         </TouchableOpacity>
 
-        <Text style={styles.label}>Vehicle Type</Text>
-        <View style={styles.chipRow}>
-          {VEHICLES.map((vehicle) => {
-            const selected = vehicle.value === vehicleType;
-            return (
-              <TouchableOpacity
-                key={vehicle.value}
-                style={[styles.chip, selected && styles.chipSelected]}
-                onPress={() => setVehicleType(vehicle.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-              >
-                <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{vehicle.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <Text style={styles.label}>Cylinders you can carry</Text>
-        <View style={styles.chipRow}>
-          {CYLINDER_CAPACITIES.map((count) => {
-            const selected = count === cylinderCapacity;
-            return (
-              <TouchableOpacity
-                key={count}
-                style={[styles.chip, selected && styles.chipSelected]}
-                onPress={() => setCylinderCapacity(count)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-              >
-                <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                  {count}
-                  {count === CYLINDER_CAPACITIES[CYLINDER_CAPACITIES.length - 1] ? '+' : ''}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <Text style={styles.label}>Plate Number</Text>
-        <TextInput
-          style={styles.input}
-          value={plateNumber}
-          onChangeText={setPlateNumber}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          maxLength={20}
-          placeholder="Enter your plate number"
-          placeholderTextColor="rgba(0,0,0,.5)"
-          returnKeyType="done"
-          accessibilityLabel="Plate Number"
-        />
-
-        <Text style={styles.label}>Area</Text>
-        {areas.isError && <Text style={styles.errorText}>{errorMessage(areas.error)}</Text>}
-        <View style={styles.chipRow}>
-          {(areas.data?.areas ?? []).map((area) => {
-            const selected = area.id === areaId;
-            return (
-              <TouchableOpacity
-                key={area.id}
-                style={[styles.chip, selected && styles.chipSelected]}
-                onPress={() => setAreaId(area.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-              >
-                <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{area.name}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <VehicleForm value={value} onChange={setValue} />
 
         <TouchableOpacity
-          style={[styles.saveButton, (!dirty || !vehicleType || !areaId || !plateValid) && styles.saveButtonDisabled]}
-          disabled={!dirty || !vehicleType || !areaId || !plateValid || updateProfile.isPending}
+          style={[styles.saveButton, (!dirty || !value.vehicleType || !value.areaId || !plateValid) && styles.saveButtonDisabled]}
+          disabled={!dirty || !value.vehicleType || !value.areaId || !plateValid || updateProfile.isPending}
           onPress={handleSave}
         >
           <Text style={styles.saveButtonText}>{updateProfile.isPending ? 'Saving...' : 'Save changes'}</Text>
@@ -218,49 +140,6 @@ const styles = StyleSheet.create({
     color: '#0085FF',
     fontWeight: '600',
     marginTop: 2,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
-    backgroundColor: '#FAFAFA',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipSelected: {
-    backgroundColor: '#000',
-    borderColor: '#000',
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#000',
-  },
-  chipTextSelected: {
-    color: '#fff',
-  },
-  input: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.2)',
-    padding: 8,
-    borderRadius: 12,
-  },
-  errorText: {
-    color: '#B42318',
-    fontSize: 13,
   },
   saveButton: {
     backgroundColor: '#000',

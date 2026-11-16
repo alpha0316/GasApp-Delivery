@@ -32,6 +32,8 @@ export interface Order {
   stationLocation: LatLng | null;
   customerLocation: LatLng;
   etaMinutes?: number;
+  // True while this cash order's platform fee is reserved from the rider's wallet.
+  platformFeeLocked: boolean;
 }
 
 export interface RecentOrder {

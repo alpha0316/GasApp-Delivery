@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { MOCK_API } from '../../lib/api/devMock';
 import { connectSocket, disconnectSocket } from '../../lib/realtime/socket';
 import { useAuthStore } from '../auth/store';
 import { poolKey } from '../pool/hooks';
@@ -15,7 +16,9 @@ export function useRealtimeSync() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!token) return;
+    // The dev mock only answers REST calls. A real socket connection with
+    // the fake token would hit the real backend, get rejected, and sign out.
+    if (!token || MOCK_API) return;
     const socket = connectSocket(token);
 
     const refreshPool = () => void queryClient.invalidateQueries({ queryKey: poolKey });
@@ -23,7 +26,6 @@ export function useRealtimeSync() {
       void queryClient.invalidateQueries({ queryKey: ordersKey });
       void queryClient.invalidateQueries({ queryKey: profileKey });
     };
-    // A suspended rider is routed to /pending once the user shows isApproved false.
     const refreshAll = () => {
       refreshUser().catch((error) => console.warn('Could not refresh the user:', error));
       refreshPool();

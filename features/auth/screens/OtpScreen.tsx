@@ -19,6 +19,10 @@ export default function OtpScreen() {
 
   const isButtonDisabled = otp.length < OTP_LENGTH || verifying;
 
+  const handleChangeOtp = (text: string) => {
+    setOtp(text.replace(/\D/g, '').slice(0, OTP_LENGTH));
+  };
+
   const handleContinue = async () => {
     setVerifying(true);
     try {
@@ -57,7 +61,7 @@ export default function OtpScreen() {
       <TextInput
         style={styles.input}
         value={otp}
-        onChangeText={setOtp}
+        onChangeText={handleChangeOtp}
         maxLength={OTP_LENGTH}
         keyboardType="numeric"
         placeholderTextColor="rgba(0, 0, 0, 0.1)"

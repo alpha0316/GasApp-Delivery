@@ -47,6 +47,7 @@ export function toOrderView(order: ApiOrder, stations: Station[] | undefined): O
     dropoffAddress: order.deliveryAddress.label,
     stationLocation: station ? stationLatLng(station) : null,
     customerLocation: customerLatLng(order),
+    platformFeeLocked: order.platformFeeLocked ?? false,
   };
 }
 

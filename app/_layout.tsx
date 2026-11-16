@@ -7,7 +7,6 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import RiderSession from '../features/auth/RiderSession';
-import { mustLeaveForPending } from '../features/auth/nextRoute';
 import { useAuthStore } from '../features/auth/store';
 import { queryClient } from '../lib/query/queryClient';
 
@@ -18,7 +17,6 @@ export default function RootLayout() {
   const segments = useSegments();
   const navigationState = useRootNavigationState();
   const status = useAuthStore((s) => s.status);
-  const user = useAuthStore((s) => s.user);
   const approved = useAuthStore((s) => s.user?.isApproved ?? false);
   const bootstrap = useAuthStore((s) => s.bootstrap);
 
@@ -32,12 +30,6 @@ export default function RootLayout() {
     if (!navigationState?.key || status !== 'signedOut' || first === undefined) return;
     if (!SIGNED_OUT_ROUTES.includes(first)) router.replace('/phone');
   }, [navigationState?.key, status, segments, router]);
-
-  // A rider suspended while signed in goes back to the approval screen.
-  useEffect(() => {
-    if (status !== 'signedIn' || !user || !navigationState?.key) return;
-    if (mustLeaveForPending(user, (segments as string[])[0])) router.replace('/pending');
-  }, [navigationState?.key, status, user, segments, router]);
 
   return (
     <QueryClientProvider client={queryClient}>

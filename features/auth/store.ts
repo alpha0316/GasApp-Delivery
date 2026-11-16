@@ -1,10 +1,38 @@
 import { create } from 'zustand';
 import { ApiError, configureApiClient, errorMessage } from '../../lib/api/client';
+import { MOCK_API, mockResetRider } from '../../lib/api/devMock';
 import type { User } from '../../lib/api/types';
 import { queryClient } from '../../lib/query/queryClient';
 import { clearToken, readToken, writeToken } from '../../lib/storage/token';
 import { unregisterPushToken } from '../notifications/push';
 import { fetchMe } from './api';
+
+// TEMP: set to false to skip login entirely and land signed in as a fake
+// approved rider, for exploring/redesigning screens. Flip back to true
+// before shipping. (Also uses lib/api/client.ts's DEV_BYPASS_TOKEN handling.)
+// Set to true (with lib/api/devMock.ts's MOCK_API also true) to walk through
+// the onboarding screens themselves against mocked API responses.
+const AUTH = true;
+
+const DEV_FAKE_USER: User = {
+  id: 'dev-rider',
+  role: 'rider',
+  phoneNumber: '+233500000000',
+  firstName: 'Dev',
+  lastName: 'Rider',
+  isApproved: true,
+  riderStatus: 'available',
+  vehicleType: 'motorbike',
+  plateNumber: 'GR-0000-24',
+  photoUrl: 'https://placehold.co/200x200',
+  areaId: 'dev-area',
+  cylinderCapacity: 6,
+  maxConcurrentOrders: 3,
+  activeOrderCount: 0,
+  rating: 4.8,
+};
+
+const DEV_BYPASS_TOKEN = 'dev-token';
 
 type AuthStatus = 'loading' | 'signedOut' | 'signedIn' | 'error';
 
@@ -28,6 +56,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   bootstrap: async () => {
     set({ status: 'loading', bootstrapError: null });
+    if (!AUTH) {
+      set({ status: 'signedIn', token: DEV_BYPASS_TOKEN, user: DEV_FAKE_USER });
+      return;
+    }
     const token = await readToken();
     if (!token) {
       set({ status: 'signedOut', token: null, user: null });
@@ -70,6 +102,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.warn('Could not remove the push token:', errorMessage(error));
     }
     await clearToken();
+    if (MOCK_API) mockResetRider();
     queryClient.clear();
     set({ status: 'signedOut', token: null, user: null, bootstrapError: null });
   },

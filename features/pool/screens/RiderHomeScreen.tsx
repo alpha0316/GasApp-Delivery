@@ -1,15 +1,18 @@
 import React, { useMemo } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Check, X } from 'phosphor-react-native';
 import OrderRequestCard from '../../../components/OrderRequestCard';
+import RiderStatusBanner from '../../../components/RiderStatusBanner';
 import { errorMessage } from '../../../lib/api/client';
 import { formatMinor } from '../../../lib/format/money';
 import { useAuthStore } from '../../auth/store';
 import { useActiveOrders, useRiderOrders, useStations } from '../../orders/hooks';
 import { toOrderView, toRecentOrder } from '../../orders/mappers';
-import { useProfile, useSetRiderStatus } from '../../profile/hooks';
+import { useProfile } from '../../profile/hooks';
 import { useAcceptOrder, useDeclineOrder, usePool } from '../hooks';
+import { useOfferWindows } from '../useOfferWindows';
 
 const RECENT_LIMIT = 10;
 
@@ -17,7 +20,6 @@ export default function RiderHomeScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const profile = useProfile();
-  const setStatus = useSetRiderStatus();
   const pool = usePool();
   const orders = useRiderOrders();
   const stations = useStations();
@@ -26,12 +28,12 @@ export default function RiderHomeScreen() {
   const declineOrder = useDeclineOrder();
 
   const rider = profile.data?.rider ?? user;
-  const online = (rider?.riderStatus ?? 'offline') !== 'offline';
 
   const poolOrders = useMemo(
     () => (pool.data ?? []).map((order) => toOrderView(order, stations.data)),
     [pool.data, stations.data]
   );
+  const offerExpiresAt = useOfferWindows(poolOrders.map((order) => order.id));
 
   const recentOrders = useMemo(
     () =>
@@ -41,14 +43,6 @@ export default function RiderHomeScreen() {
         .slice(0, RECENT_LIMIT),
     [orders.data]
   );
-
-  const handleToggleOnline = async (next: boolean) => {
-    try {
-      await setStatus.mutateAsync(next ? 'available' : 'offline');
-    } catch (error) {
-      Alert.alert('Error', errorMessage(error));
-    }
-  };
 
   const openTracking = (orderIds: string[]) => {
     if (orderIds.length === 1) {
@@ -86,15 +80,7 @@ export default function RiderHomeScreen() {
         </View>
       </View>
 
-      <View style={styles.onlineRow}>
-        <Text style={styles.onlineLabel}>{online ? 'Online' : 'Offline'}</Text>
-        <Switch
-          value={online}
-          onValueChange={handleToggleOnline}
-          disabled={setStatus.isPending}
-          accessibilityLabel="Online status"
-        />
-      </View>
+      <RiderStatusBanner rider={rider} />
 
       {activeOrders.length > 0 && (
         <TouchableOpacity style={styles.continueButton} onPress={() => openTracking(activeOrders.map((o) => o.id))}>
@@ -102,7 +88,7 @@ export default function RiderHomeScreen() {
         </TouchableOpacity>
       )}
 
-      {online && pool.isError && <Text style={styles.poolMessage}>{errorMessage(pool.error)}</Text>}
+      {pool.isError && <Text style={styles.poolMessage}>{errorMessage(pool.error)}</Text>}
 
       {poolOrders.length > 0 && (
         <View style={{ gap: 12 }}>
@@ -111,6 +97,7 @@ export default function RiderHomeScreen() {
             <OrderRequestCard
               key={order.id}
               order={order}
+              offerExpiresAt={offerExpiresAt(order.id)}
               onAccept={() => handleAccept(order.id)}
               onDecline={() => handleDecline(order.id)}
             />
@@ -179,15 +166,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(0,0,0,0.5)',
     marginTop: 2,
-  },
-  onlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  onlineLabel: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   continueButton: {
     height: 52,

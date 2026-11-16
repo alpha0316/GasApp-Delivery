@@ -1,4 +1,5 @@
 import { ApiError } from '../../lib/api/client';
+import { MOCK_API } from '../../lib/api/devMock';
 import { patchProfile, requestPhotoUpload } from './api';
 
 const MAX_BYTES = 5_242_880;
@@ -19,9 +20,13 @@ export async function uploadProfilePhoto(localUri: string, mimeType: string | un
 
   const ticket = await requestPhotoUpload(contentType, file.size);
 
-  const upload = await fetch(ticket.uploadUrl, { method: 'PUT', headers: ticket.headers, body: file });
-  if (!upload.ok) {
-    throw new ApiError(upload.status, 'UPLOAD_FAILED', 'The photo upload failed. Please try again.');
+  // The dev mock issues a fake uploadUrl with nothing listening on the other
+  // end, so skip the actual PUT and pretend it succeeded.
+  if (!MOCK_API) {
+    const upload = await fetch(ticket.uploadUrl, { method: 'PUT', headers: ticket.headers, body: file });
+    if (!upload.ok) {
+      throw new ApiError(upload.status, 'UPLOAD_FAILED', 'The photo upload failed. Please try again.');
+    }
   }
 
   const { rider } = await patchProfile({ photoUrl: ticket.photoUrl });

@@ -6,6 +6,7 @@ import { User, Camera, Image as ImageIcon } from 'phosphor-react-native';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
 import { errorMessage } from '../../../lib/api/client';
+import { MOCK_API, mockSetPhoto } from '../../../lib/api/devMock';
 import { nextRoute } from '../../auth/nextRoute';
 import { useAuthStore } from '../../auth/store';
 import { uploadProfilePhoto } from '../uploadPhoto';
@@ -70,6 +71,12 @@ export default function ProfilePhotoScreen() {
     }
   };
 
+  const handleDevSkip = () => {
+    const rider = mockSetPhoto();
+    setUser(rider);
+    router.replace(nextRoute(rider));
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -109,6 +116,8 @@ export default function ProfilePhotoScreen() {
           onPress={handleContinue}
           style={styles.continueButton}
         />
+
+        {MOCK_API && <PrimaryButton title="Skip photo (dev)" onPress={handleDevSkip} style={styles.devSkip} />}
       </View>
     </View>
   );
@@ -183,5 +192,9 @@ const styles = StyleSheet.create({
   },
   continueButton: {
     marginTop: 16,
+  },
+  devSkip: {
+    marginTop: 12,
+    backgroundColor: '#0A84FF',
   },
 });
