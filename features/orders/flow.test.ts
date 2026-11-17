@@ -1,5 +1,5 @@
 import type { ApiOrder } from '../../lib/api/types';
-import { advanceThrough, needsCashCall, phaseOf, statusPath } from './flow';
+import { advanceThrough, historyBucket, needsCashCall, phaseOf, statusPath } from './flow';
 
 describe('phaseOf', () => {
   it('maps each active status to a leg', () => {
@@ -25,6 +25,18 @@ describe('statusPath', () => {
   it('returns nothing when the order is already at or past the target', () => {
     expect(statusPath('filling', 'picked_up')).toEqual([]);
     expect(statusPath('filling', 'filling')).toEqual([]);
+  });
+});
+
+describe('historyBucket', () => {
+  it('buckets an order into pending, ongoing or completed', () => {
+    expect(historyBucket('rider_assigned')).toBe('pending');
+    expect(historyBucket('picked_up')).toBe('ongoing');
+    expect(historyBucket('filling')).toBe('ongoing');
+    expect(historyBucket('en_route_to_customer')).toBe('ongoing');
+    expect(historyBucket('delivered')).toBe('completed');
+    expect(historyBucket('cancelled')).toBe('completed');
+    expect(historyBucket('refunded')).toBe('completed');
   });
 });
 

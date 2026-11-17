@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
@@ -9,19 +10,23 @@ import { splitFullName } from '../names';
 import { nextRoute } from '../nextRoute';
 import { useAuthStore } from '../store';
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function FullNameScreen() {
   const router = useRouter();
   const setUser = useAuthStore((s) => s.setUser);
   const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const isButtonDisabled = fullName.trim().length < 2 || saving;
+  const emailValid = email.trim().length === 0 || EMAIL_PATTERN.test(email.trim());
+  const isButtonDisabled = fullName.trim().length < 2 || !emailValid || saving;
 
   const handleContinue = async () => {
     const { firstName, lastName } = splitFullName(fullName);
     setSaving(true);
     try {
-      const { user } = await updateName(firstName, lastName);
+      const { user } = await updateName(firstName, lastName, email.trim() || undefined);
       setUser(user);
       router.replace(nextRoute(user));
     } catch (error) {
@@ -32,7 +37,7 @@ export default function FullNameScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <BackButton />
       </View>
@@ -62,9 +67,30 @@ export default function FullNameScreen() {
           accessibilityLabel="Full Name"
         />
 
+        <Text style={styles.label}>Email (optional)</Text>
+        <TextInput
+          style={[
+            styles.input,
+            {
+              borderColor: email ? '#000' : 'rgba(0, 0, 0, 0.20)',
+              backgroundColor: email ? '#fff' : '#F4F4F4',
+            },
+          ]}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          placeholder="Enter your email"
+          placeholderTextColor="rgba(0,0,0,.5)"
+          returnKeyType="done"
+          accessibilityLabel="Email"
+        />
+        {!emailValid && <Text style={styles.errorText}>Enter a valid email or leave it blank.</Text>}
+
         <PrimaryButton title="Continue" disabled={isButtonDisabled} onPress={handleContinue} />
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -77,7 +103,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
+    marginBottom: 16,
   },
   content: {
     marginTop: 64,
@@ -103,5 +129,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 8,
     borderRadius: 12,
+  },
+  errorText: {
+    color: '#B42318',
+    fontSize: 13,
   },
 });

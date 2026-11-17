@@ -39,9 +39,21 @@ export interface User {
   plateNumber?: string;
   photoUrl?: string;
   areaId?: string;
+  cylinderCapacity?: number;
   maxConcurrentOrders?: number;
   activeOrderCount: number;
   rating: number | null;
+  // Minor units (pesewas). The float that guarantees GasApp's commission on
+  // cash orders: see lib/pricing/feeSchedule.ts.
+  walletBalance?: number;
+  // Sum of platform fees reserved against accepted, not-yet-delivered cash orders.
+  walletLocked?: number;
+  // Unexcused-cancellation strikes within the last 7 days (section 3.3).
+  strikes?: number;
+  // ISO timestamps of those strikes, for the rolling 7-day window.
+  strikeHistory?: string[];
+  // True once 3 unexcused cancellations land within 7 days: cannot go online until an admin resolves it.
+  suspended?: boolean;
 }
 
 export interface Area {
@@ -96,6 +108,9 @@ export interface ApiOrder {
   deliveredAt?: string;
   // Rider order payloads only: true when the payment status is cash_collected.
   cashCollected?: boolean;
+  // True while this cash order's platform fee is reserved from the rider's
+  // wallet (locked on accept, released on cancel, deducted on delivery).
+  platformFeeLocked?: boolean;
   // Pool list only
   pickupDistanceKm?: number;
   estimatedEarnings?: number;

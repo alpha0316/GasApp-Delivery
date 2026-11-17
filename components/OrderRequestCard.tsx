@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { Order } from '../types/order';
 import { formatMinor } from '../lib/format/money';
@@ -13,19 +13,59 @@ import {
 
 interface OrderRequestCardProps {
   order: Order;
+  // ISO timestamp: the primary notification window (section 3.2) auto-declines
+  // the offer once this passes.
+  offerExpiresAt: string;
   onAccept: () => void;
   onDecline: () => void;
   onViewLocation?: () => void;
   onFlag?: () => void;
+  // While an accept/decline request is in flight: dims and disables both
+  // buttons so a tap always gives visible feedback, even on a slow network.
+  busy?: boolean;
+}
+
+const secondsUntil = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
+
+function useOfferCountdown(offerExpiresAt: string, onExpire: () => void) {
+  const [secondsLeft, setSecondsLeft] = useState(() => secondsUntil(offerExpiresAt));
+  const expiredRef = useRef(false);
+  const onExpireRef = useRef(onExpire);
+  onExpireRef.current = onExpire;
+
+  useEffect(() => {
+    expiredRef.current = false;
+    setSecondsLeft(secondsUntil(offerExpiresAt));
+    const interval = setInterval(() => {
+      const remaining = secondsUntil(offerExpiresAt);
+      setSecondsLeft(remaining);
+      if (remaining <= 0 && !expiredRef.current) {
+        expiredRef.current = true;
+        onExpireRef.current();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [offerExpiresAt]);
+
+  return secondsLeft;
 }
 
 export default function OrderRequestCard({
   order,
+  offerExpiresAt,
   onAccept,
   onDecline,
   onViewLocation,
   onFlag,
+  busy = false,
 }: OrderRequestCardProps) {
+  const secondsLeft = useOfferCountdown(offerExpiresAt, onDecline);
+  const urgent = secondsLeft <= 10;
+  // Once the countdown hits 0, decline fires, but disabling locally right
+  // away (rather than waiting on that mutation + the pool refetch) closes
+  // the window where a tap can still land on an order that's already gone.
+  const disabled = busy || secondsLeft <= 0;
+
   return (
     <View style={styles.outer}>
       <View style={styles.headerRow}>
@@ -33,7 +73,12 @@ export default function OrderRequestCard({
           <Text style={styles.name}>{order.customerName}</Text>
           {!!order.customerPhone && <Text style={styles.phone}>{order.customerPhone}</Text>}
         </View>
-        <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
+        <View style={styles.headerRight}>
+          <View style={[styles.countdownPill, urgent && styles.countdownPillUrgent]}>
+            <Text style={[styles.countdownText, urgent && styles.countdownTextUrgent]}>{secondsLeft}s</Text>
+          </View>
+          <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
+        </View>
       </View>
 
       <View style={styles.card}>
@@ -104,10 +149,18 @@ export default function OrderRequestCard({
               <FlagIcon />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.declineButton} onPress={onDecline}>
+          <TouchableOpacity
+            style={[styles.declineButton, disabled && styles.buttonBusy]}
+            onPress={onDecline}
+            disabled={disabled}
+          >
             <Text style={styles.declineText}>Decline</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
+          <TouchableOpacity
+            style={[styles.acceptButton, disabled && styles.buttonBusy]}
+            onPress={onAccept}
+            disabled={disabled}
+          >
             <Text style={styles.acceptText}>Accept</Text>
           </TouchableOpacity>
         </View>
@@ -147,6 +200,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#34C759',
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  countdownPill: {
+    backgroundColor: '#F4F4F4',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  countdownPillUrgent: {
+    backgroundColor: '#FEF3F2',
+  },
+  countdownText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(0,0,0,0.5)',
+  },
+  countdownTextUrgent: {
+    color: '#B42318',
   },
   card: {
     backgroundColor: '#fff',
@@ -233,6 +307,9 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  buttonBusy: {
+    opacity: 0.5,
   },
   flagButton: {
     width: 44,

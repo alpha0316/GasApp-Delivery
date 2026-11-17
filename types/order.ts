@@ -32,6 +32,8 @@ export interface Order {
   stationLocation: LatLng | null;
   customerLocation: LatLng;
   etaMinutes?: number;
+  // True while this cash order's platform fee is reserved from the rider's wallet.
+  platformFeeLocked: boolean;
 }
 
 export interface RecentOrder {
@@ -63,4 +65,8 @@ export interface QueueOrder {
   estimatedEarnings: number;
   customerLocation: LatLng;
   status: QueueOrderStatus;
+  // The filling station name and acceptance time, for the active-delivery
+  // queue card. Empty/blank when the caller didn't have a stations list.
+  stationName: string;
+  createdAt: string;
 }

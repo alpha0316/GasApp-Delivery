@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
@@ -12,6 +13,10 @@ export default function PhoneNumberScreen() {
   const [sending, setSending] = useState(false);
 
   const isButtonDisabled = phoneNumber.length < 10 || sending;
+
+  const handleChangePhoneNumber = (text: string) => {
+    setPhoneNumber(text.replace(/\D/g, '').slice(0, 10));
+  };
 
   const handleRequestOtp = async () => {
     if (phoneNumber.length < 10) {
@@ -30,7 +35,7 @@ export default function PhoneNumberScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <BackButton />
       </View>
@@ -51,7 +56,7 @@ export default function PhoneNumberScreen() {
             },
           ]}
           value={phoneNumber}
-          onChangeText={setPhoneNumber}
+          onChangeText={handleChangePhoneNumber}
           keyboardType="numeric"
           autoCapitalize="none"
           placeholder="Enter your phone number"
@@ -67,7 +72,7 @@ export default function PhoneNumberScreen() {
           </Text>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -83,7 +88,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
+    marginBottom: 16,
   },
   input: {
     height: 50,

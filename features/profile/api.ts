@@ -6,6 +6,7 @@ export interface ProfilePatch {
   plateNumber?: string;
   photoUrl?: string;
   areaId?: string;
+  cylinderCapacity?: number;
 }
 
 export const fetchProfile = () => api<{ rider: User; maxConcurrentOrders: number }>('/rider/profile');
@@ -17,6 +18,9 @@ export const fetchAreas = () => api<{ areas: Area[] }>('/areas');
 
 export const setRiderStatus = (status: 'available' | 'offline') =>
   api<{ rider: User }>('/rider/status', { method: 'PATCH', body: { status } });
+
+// amount is minor units (pesewas).
+export const topUpWallet = (amount: number) => api<{ rider: User }>('/rider/wallet/topup', { method: 'POST', body: { amount } });
 
 interface PhotoUploadTicket {
   uploadUrl: string;

@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { WarningDuotoneIcon } from './icons/OrderCardIcons';
+import ModalCloseButton from './ModalCloseButton';
 import { OrderIssueReason } from '../types/order';
 
 export const ORDER_ISSUE_REASON_LABELS: Record<OrderIssueReason, string> = {
@@ -68,6 +69,7 @@ export default function ReportOrderIssueModal({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.sheet}>
+          <ModalCloseButton onPress={handleCancel} />
           <View style={styles.handle} />
 
           <View style={styles.titleRow}>

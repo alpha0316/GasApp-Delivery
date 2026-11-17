@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../auth/store';
-import { fetchAreas, fetchProfile, patchProfile, setRiderStatus, type ProfilePatch } from './api';
+import { fetchAreas, fetchProfile, patchProfile, setRiderStatus, topUpWallet, type ProfilePatch } from './api';
 
 export const profileKey = ['rider', 'profile'] as const;
 
@@ -29,6 +29,18 @@ export function useSetRiderStatus() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (status: 'available' | 'offline') => setRiderStatus(status),
+    onSuccess: ({ rider }) => {
+      setUser(rider);
+      void queryClient.invalidateQueries({ queryKey: profileKey });
+    },
+  });
+}
+
+export function useTopUpWallet() {
+  const setUser = useAuthStore((s) => s.setUser);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (amount: number) => topUpWallet(amount),
     onSuccess: ({ rider }) => {
       setUser(rider);
       void queryClient.invalidateQueries({ queryKey: profileKey });

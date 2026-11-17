@@ -1,36 +1,54 @@
 import React from 'react';
 import { Modal, View, Text, StyleSheet } from 'react-native';
 import OrderRequestCard from './OrderRequestCard';
+import ModalCloseButton from './ModalCloseButton';
 import { Order } from '../types/order';
 
 interface NewOrderRequestModalProps {
   visible: boolean;
   order: Order | null;
+  offerExpiresAt: string;
   onAccept: () => void;
   onDecline: () => void;
+  // Closing the sheet (the X, or Android back) just hides it - the offer
+  // stays live in the background (still counting down to auto-decline) so
+  // the rider can reconsider rather than it being gone outright.
+  onDismiss: () => void;
   onFlag?: () => void;
+  busy?: boolean;
 }
 
 export default function NewOrderRequestModal({
   visible,
   order,
+  offerExpiresAt,
   onAccept,
   onDecline,
+  onDismiss,
   onFlag,
+  busy,
 }: NewOrderRequestModalProps) {
   if (!order) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onDismiss}>
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
+          <ModalCloseButton onPress={onDismiss} />
           <View style={styles.handle} />
           <Text style={styles.title}>New Order Request</Text>
           <Text style={styles.subtitle}>
             You can queue this for after your current delivery or decline it.
           </Text>
 
-          <OrderRequestCard order={order} onAccept={onAccept} onDecline={onDecline} onFlag={onFlag} />
+          <OrderRequestCard
+            order={order}
+            offerExpiresAt={offerExpiresAt}
+            onAccept={onAccept}
+            onDecline={onDecline}
+            onFlag={onFlag}
+            busy={busy}
+          />
         </View>
       </View>
     </Modal>
