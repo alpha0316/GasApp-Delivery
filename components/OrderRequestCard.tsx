@@ -20,6 +20,9 @@ interface OrderRequestCardProps {
   onDecline: () => void;
   onViewLocation?: () => void;
   onFlag?: () => void;
+  // While an accept/decline request is in flight: dims and disables both
+  // buttons so a tap always gives visible feedback, even on a slow network.
+  busy?: boolean;
 }
 
 const secondsUntil = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
@@ -54,9 +57,14 @@ export default function OrderRequestCard({
   onDecline,
   onViewLocation,
   onFlag,
+  busy = false,
 }: OrderRequestCardProps) {
   const secondsLeft = useOfferCountdown(offerExpiresAt, onDecline);
   const urgent = secondsLeft <= 10;
+  // Once the countdown hits 0, decline fires, but disabling locally right
+  // away (rather than waiting on that mutation + the pool refetch) closes
+  // the window where a tap can still land on an order that's already gone.
+  const disabled = busy || secondsLeft <= 0;
 
   return (
     <View style={styles.outer}>
@@ -141,10 +149,18 @@ export default function OrderRequestCard({
               <FlagIcon />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.declineButton} onPress={onDecline}>
+          <TouchableOpacity
+            style={[styles.declineButton, disabled && styles.buttonBusy]}
+            onPress={onDecline}
+            disabled={disabled}
+          >
             <Text style={styles.declineText}>Decline</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
+          <TouchableOpacity
+            style={[styles.acceptButton, disabled && styles.buttonBusy]}
+            onPress={onAccept}
+            disabled={disabled}
+          >
             <Text style={styles.acceptText}>Accept</Text>
           </TouchableOpacity>
         </View>
@@ -291,6 +307,9 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  buttonBusy: {
+    opacity: 0.5,
   },
   flagButton: {
     width: 44,

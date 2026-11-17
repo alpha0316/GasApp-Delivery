@@ -51,8 +51,9 @@ export function toOrderView(order: ApiOrder, stations: Station[] | undefined): O
   };
 }
 
-export function toQueueOrder(order: ApiOrder, status: QueueOrder['status']): QueueOrder {
+export function toQueueOrder(order: ApiOrder, status: QueueOrder['status'], stations?: Station[]): QueueOrder {
   const customer = customerOf(order);
+  const station = stations?.find((s) => s.id === order.stationId);
   return {
     id: order.id,
     customerName: customer.name,
@@ -64,10 +65,12 @@ export function toQueueOrder(order: ApiOrder, status: QueueOrder['status']): Que
     estimatedEarnings: order.estimatedEarnings ?? (order.riderCommission ?? 0) + order.pricing.tip,
     customerLocation: customerLatLng(order),
     status,
+    stationName: station?.name ?? '',
+    createdAt: order.createdAt,
   };
 }
 
-function formatClock(date: Date): string {
+export function formatClock(date: Date): string {
   const hours = date.getHours();
   const minutes = String(date.getMinutes()).padStart(2, '0');
   const suffix = hours >= 12 ? 'pm' : 'am';

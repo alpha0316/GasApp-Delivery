@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { WarningDuotoneIcon } from './icons/OrderCardIcons';
+import ModalCloseButton from './ModalCloseButton';
 import { CANCEL_REASONS, isValidCancelReason, type CancelReason } from '../lib/orders/cancelReasons';
 
 interface CancelOrderModalProps {
@@ -31,6 +32,7 @@ export default function CancelOrderModal({ visible, onCancel, onSubmit }: Cancel
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleCancel}>
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
+          <ModalCloseButton onPress={handleCancel} />
           <View style={styles.handle} />
 
           <View style={styles.titleRow}>

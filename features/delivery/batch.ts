@@ -1,4 +1,4 @@
-import type { ApiOrder } from '../../lib/api/types';
+import type { ApiOrder, Station } from '../../lib/api/types';
 import type { QueueOrder } from '../../types/order';
 import { toQueueOrder } from '../orders/mappers';
 
@@ -17,16 +17,16 @@ const isGone = (order: ApiOrder) => order.status === 'cancelled' || order.status
 
 // Derives the batch screen state from the server orders. A flagged order stays
 // active on the server, but the rider skips it.
-export function deriveBatch(orders: ApiOrder[], flaggedIds: Record<string, true>): BatchState {
+export function deriveBatch(orders: ApiOrder[], flaggedIds: Record<string, true>, stations?: Station[]): BatchState {
   const visible = orders.filter((order) => !isGone(order));
   const remaining = visible.filter((order) => order.status !== 'delivered' && !flaggedIds[order.id]);
   const upNext = remaining.find((order) => order.status === 'en_route_to_customer') ?? null;
 
   const queue = visible.map((order) => {
-    if (order.status === 'delivered') return toQueueOrder(order, 'delivered');
-    if (flaggedIds[order.id]) return toQueueOrder(order, 'flagged');
-    if (upNext && order.id === upNext.id) return toQueueOrder(order, 'up_next');
-    return toQueueOrder(order, 'queued');
+    if (order.status === 'delivered') return toQueueOrder(order, 'delivered', stations);
+    if (flaggedIds[order.id]) return toQueueOrder(order, 'flagged', stations);
+    if (upNext && order.id === upNext.id) return toQueueOrder(order, 'up_next', stations);
+    return toQueueOrder(order, 'queued', stations);
   });
 
   return {

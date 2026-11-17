@@ -65,4 +65,8 @@ export interface QueueOrder {
   estimatedEarnings: number;
   customerLocation: LatLng;
   status: QueueOrderStatus;
+  // The filling station name and acceptance time, for the active-delivery
+  // queue card. Empty/blank when the caller didn't have a stations list.
+  stationName: string;
+  createdAt: string;
 }

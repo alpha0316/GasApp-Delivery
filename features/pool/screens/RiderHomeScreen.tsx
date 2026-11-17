@@ -1,12 +1,15 @@
-import React, { useMemo } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Check, X } from 'phosphor-react-native';
+import NewOrderRequestModal from '../../../components/NewOrderRequestModal';
+import OngoingOrderCard from '../../../components/OngoingOrderCard';
 import OrderRequestCard from '../../../components/OrderRequestCard';
 import RiderStatusBanner from '../../../components/RiderStatusBanner';
 import { errorMessage } from '../../../lib/api/client';
 import { formatMinor } from '../../../lib/format/money';
+import { orderAcceptErrorMessage } from '../../../lib/orders/errors';
 import { useAuthStore } from '../../auth/store';
 import { useActiveOrders, useRiderOrders, useStations } from '../../orders/hooks';
 import { toOrderView, toRecentOrder } from '../../orders/mappers';
@@ -28,12 +31,22 @@ export default function RiderHomeScreen() {
   const declineOrder = useDeclineOrder();
 
   const rider = profile.data?.rider ?? user;
+  const ongoingOrder = activeOrders.length > 0 ? activeOrders[0] : undefined;
+  const ongoingView = ongoingOrder ? toOrderView(ongoingOrder, stations.data) : null;
 
   const poolOrders = useMemo(
     () => (pool.data ?? []).map((order) => toOrderView(order, stations.data)),
     [pool.data, stations.data]
   );
   const offerExpiresAt = useOfferWindows(poolOrders.map((order) => order.id));
+
+  // While there's an ongoing delivery, a new pool order interrupts with a
+  // popup instead of sitting inline - the rider is already busy with one.
+  const offer = ongoingOrder ? poolOrders[0] : undefined;
+  // Closing the popup just hides it; a fresh offer (different id) always
+  // starts shown again.
+  const [offerDismissed, setOfferDismissed] = useState(false);
+  useEffect(() => setOfferDismissed(false), [offer?.id]);
 
   const recentOrders = useMemo(
     () =>
@@ -58,7 +71,7 @@ export default function RiderHomeScreen() {
       // A rider with a queue continues with it. The new order joins the queue.
       openTracking(activeOrders.length > 0 ? activeOrders.map((o) => o.id) : [order.id]);
     } catch (error) {
-      Alert.alert('Error', errorMessage(error));
+      Alert.alert('Error', orderAcceptErrorMessage(error));
     }
   };
 
@@ -71,68 +84,82 @@ export default function RiderHomeScreen() {
   };
 
   return (
-    <ScrollView style={styles.main} contentContainerStyle={styles.content}>
-      <View style={styles.headerRow}>
-        {rider?.photoUrl ? <Image source={{ uri: rider.photoUrl }} style={styles.avatar} /> : <View style={styles.avatar} />}
-        <View style={{ flex: 1 }}>
-          <Text style={styles.greeting}>Hello {rider?.firstName || 'Rider'} 👋</Text>
-          <Text style={styles.subGreeting}>Todays Bookings</Text>
+    <SafeAreaView style={styles.main} edges={['top', 'bottom']}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.headerRow}>
+          {rider?.photoUrl ? <Image source={{ uri: rider.photoUrl }} style={styles.avatar} /> : <View style={styles.avatar} />}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.greeting}>Hello {rider?.firstName || 'Rider'} 👋</Text>
+            <Text style={styles.subGreeting}>Todays Bookings</Text>
+          </View>
         </View>
-      </View>
 
-      <RiderStatusBanner rider={rider} />
+        <RiderStatusBanner rider={rider} />
 
-      {activeOrders.length > 0 && (
-        <TouchableOpacity style={styles.continueButton} onPress={() => openTracking(activeOrders.map((o) => o.id))}>
-          <Text style={styles.continueButtonText}>Continue delivery ({activeOrders.length})</Text>
-        </TouchableOpacity>
-      )}
+        {ongoingView && (
+          <View style={{ gap: 12 }}>
+            <Text style={styles.sectionTitle}>On Going Order!</Text>
+            <OngoingOrderCard order={ongoingView} onReturn={() => openTracking(activeOrders.map((o) => o.id))} />
+          </View>
+        )}
 
-      {pool.isError && <Text style={styles.poolMessage}>{errorMessage(pool.error)}</Text>}
+        {pool.isError && <Text style={styles.poolMessage}>{errorMessage(pool.error)}</Text>}
 
-      {poolOrders.length > 0 && (
+        {!ongoingView && poolOrders.length > 0 && (
+          <View style={{ gap: 12 }}>
+            <Text style={styles.sectionTitle}>New Order!</Text>
+            {poolOrders.map((order) => (
+              <OrderRequestCard
+                key={order.id}
+                order={order}
+                offerExpiresAt={offerExpiresAt(order.id)}
+                onAccept={() => handleAccept(order.id)}
+                onDecline={() => handleDecline(order.id)}
+                busy={acceptOrder.isPending || declineOrder.isPending}
+              />
+            ))}
+          </View>
+        )}
+
         <View style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>New Order!</Text>
-          {poolOrders.map((order) => (
-            <OrderRequestCard
-              key={order.id}
-              order={order}
-              offerExpiresAt={offerExpiresAt(order.id)}
-              onAccept={() => handleAccept(order.id)}
-              onDecline={() => handleDecline(order.id)}
-            />
+          <Text style={styles.sectionTitle}>Recent Orders</Text>
+          {recentOrders.map((order) => (
+            <View key={order.id} style={styles.recentRow}>
+              <View
+                style={[
+                  styles.statusIcon,
+                  order.status === 'completed' ? styles.statusIconSuccess : styles.statusIconCancel,
+                ]}
+              >
+                {order.status === 'completed' ? (
+                  <Check size={14} color="#fff" weight="bold" />
+                ) : (
+                  <X size={14} color="#fff" weight="bold" />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.recentName}>{order.customerName}</Text>
+                <Text style={styles.recentMeta}>{order.area}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.recentAmount}>₵ {formatMinor(order.amount)}</Text>
+                <Text style={styles.recentTime}>{order.time}</Text>
+              </View>
+            </View>
           ))}
         </View>
-      )}
+      </ScrollView>
 
-      <View style={{ gap: 12 }}>
-        <Text style={styles.sectionTitle}>Recent Orders</Text>
-        {recentOrders.map((order) => (
-          <View key={order.id} style={styles.recentRow}>
-            <View
-              style={[
-                styles.statusIcon,
-                order.status === 'completed' ? styles.statusIconSuccess : styles.statusIconCancel,
-              ]}
-            >
-              {order.status === 'completed' ? (
-                <Check size={14} color="#fff" weight="bold" />
-              ) : (
-                <X size={14} color="#fff" weight="bold" />
-              )}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.recentName}>{order.customerName}</Text>
-              <Text style={styles.recentMeta}>{order.area}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.recentAmount}>₵ {formatMinor(order.amount)}</Text>
-              <Text style={styles.recentTime}>{order.time}</Text>
-            </View>
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+      <NewOrderRequestModal
+        visible={!!offer && !offerDismissed}
+        order={offer ?? null}
+        offerExpiresAt={offer ? offerExpiresAt(offer.id) : new Date().toISOString()}
+        onAccept={() => offer && handleAccept(offer.id)}
+        onDecline={() => offer && handleDecline(offer.id)}
+        onDismiss={() => setOfferDismissed(true)}
+        busy={acceptOrder.isPending || declineOrder.isPending}
+      />
+    </SafeAreaView>
   );
 }
 
@@ -143,7 +170,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 16,
-    paddingTop: 30,
+    paddingTop: 16,
     paddingBottom: 120,
     gap: 24,
   },
@@ -166,18 +193,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(0,0,0,0.5)',
     marginTop: 2,
-  },
-  continueButton: {
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  continueButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
   },
   poolMessage: {
     fontSize: 12,

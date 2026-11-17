@@ -1,15 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import BackButton from '../../../components/BackButton';
 import CancelOrderModal from '../../../components/CancelOrderModal';
 import TrackingOrderCard from '../../../components/TrackingOrderCard';
 import NewOrderRequestModal from '../../../components/NewOrderRequestModal';
 import DeliveryCompleteModal from '../../../components/DeliveryCompleteModal';
-import OrderQueueRow from '../../../components/OrderQueueRow';
 import ReportOrderIssueModal from '../../../components/ReportOrderIssueModal';
-import { WarningIcon } from '../../../components/icons/OrderCardIcons';
+import { PhoneCallDuotoneIcon, WarningIcon } from '../../../components/icons/OrderCardIcons';
 import { errorMessage } from '../../../lib/api/client';
+import { orderAcceptErrorMessage } from '../../../lib/orders/errors';
 import { formatMinor } from '../../../lib/format/money';
 import type { ApiOrder } from '../../../lib/api/types';
 import type { CancelReason } from '../../../lib/orders/cancelReasons';
@@ -30,9 +31,19 @@ import { phaseOf, type Phase } from '../../orders/flow';
 import { customerLatLng, stationLatLng, toOrderView } from '../../orders/mappers';
 import { useAcceptOrder, useDeclineOrder, usePool } from '../../pool/hooks';
 import { useOfferWindows } from '../../pool/useOfferWindows';
+import { distanceMeters } from '../../../utils/geo';
 import { deriveBatch } from '../batch';
 import TrackingMap from '../TrackingMap';
 import { useLegProgress, useRoutePath } from '../hooks';
+
+// Close enough to a pin (customer or filling station) to count as "arrived"
+// and auto-advance the order without a manual tap.
+const ARRIVAL_RADIUS_METERS = 60;
+
+// How long a single order's cylinder takes to fill at the station - matches
+// StatusTimeline's default "Arriving in 5 minutes" estimate. "Filled up" is
+// automatic once this elapses, no manual tap needed.
+const FILLING_DURATION_MS = 5 * 60_000;
 
 // How long the bike takes to glide to a new GPS fix.
 const PHASE_CONFIG: Record<
@@ -66,6 +77,7 @@ const PHASE_CONFIG: Record<
 
 export default function DeliveryTrackingScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ orderId?: string; orderIds?: string }>();
   const isBatch = typeof params.orderIds === 'string';
   const sessionIds = useMemo(
@@ -91,7 +103,9 @@ export default function DeliveryTrackingScreen() {
 
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
-  const [showCancelModal, setShowCancelModal] = useState(false);
+  // The id of whichever order the cancel sheet currently targets - just the
+  // current focus order here; referring other queued orders happens on Home.
+  const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const sessionOrders = useMemo(
@@ -102,7 +116,10 @@ export default function DeliveryTrackingScreen() {
     [sessionIds, ordersQuery.data]
   );
 
-  const batch = useMemo(() => deriveBatch(sessionOrders, flaggedIds), [sessionOrders, flaggedIds]);
+  const batch = useMemo(
+    () => deriveBatch(sessionOrders, flaggedIds, stations.data),
+    [sessionOrders, flaggedIds, stations.data]
+  );
   const single = !isBatch ? sessionOrders[0] : undefined;
 
   // The order the rider is working on right now.
@@ -169,23 +186,52 @@ export default function DeliveryTrackingScreen() {
       router.push({ pathname: '/filling', params: { orderIds: sessionIds.join(',') } });
     });
 
+  // Once the batch rider's GPS is within range of the filling station, open
+  // the filling checklist automatically instead of waiting on a manual tap.
+  const startedFillingRef = useRef(false);
+  useEffect(() => {
+    if (!isBatch || batch.delivering || busy || startedFillingRef.current) return;
+    if (!position || !stationLocation) return;
+    if (distanceMeters(position, stationLocation) > ARRIVAL_RADIUS_METERS) return;
+    startedFillingRef.current = true;
+    void handleStartFilling();
+  }, [isBatch, batch.delivering, busy, position, stationLocation]);
+
+  // Once a single-order rider's GPS is within range of the customer, mark
+  // the cylinder picked up automatically instead of waiting on a manual tap.
+  const startedPickupRef = useRef(false);
+  useEffect(() => {
+    if (isBatch || phase !== 'toUserPickup' || !single || busy || startedPickupRef.current) return;
+    if (!position || !customerLocation) return;
+    if (distanceMeters(position, customerLocation) > ARRIVAL_RADIUS_METERS) return;
+    startedPickupRef.current = true;
+    void runAction(async () => void (await advance.mutateAsync({ order: single, target: 'picked_up' })));
+  }, [isBatch, phase, single, busy, position, customerLocation]);
+
+  // The rider is stationary at the filling station for this leg, so there's
+  // no GPS arrival to trigger on - instead, "Filled up" happens automatically
+  // once the card's own "Arriving in {etaMinutes} minutes" estimate elapses.
+  const fillingTimerRef = useRef<{ orderId: string; startedAt: number } | null>(null);
+  useEffect(() => {
+    if (isBatch || phase !== 'toStation' || !single || busy) return;
+    if (fillingTimerRef.current?.orderId !== single.id) {
+      fillingTimerRef.current = { orderId: single.id, startedAt: Date.now() };
+    }
+    const elapsed = Date.now() - fillingTimerRef.current.startedAt;
+    const timeout = setTimeout(
+      () => void runAction(async () => void (await advance.mutateAsync({ order: single, target: 'en_route_to_customer' }))),
+      Math.max(0, FILLING_DURATION_MS - elapsed)
+    );
+    return () => clearTimeout(timeout);
+  }, [isBatch, phase, single, busy]);
+
   const handlePrimaryAction = () => {
     if (isBatch) {
-      if (batch.delivering && batch.upNext) {
-        deliverOrder(batch.upNext, () => undefined);
-      } else {
-        void handleStartFilling();
-      }
+      if (batch.upNext) deliverOrder(batch.upNext, () => undefined);
       return;
     }
     if (!single) return;
-    if (phase === 'toUserPickup') {
-      void runAction(async () => void (await advance.mutateAsync({ order: single, target: 'picked_up' })));
-    } else if (phase === 'toStation') {
-      void runAction(async () => void (await advance.mutateAsync({ order: single, target: 'en_route_to_customer' })));
-    } else {
-      deliverOrder(single, () => setShowCompleteModal(true));
-    }
+    deliverOrder(single, () => setShowCompleteModal(true));
   };
 
   const handleReportIssue = (reasons: OrderIssueReason[], description?: string) => {
@@ -197,11 +243,17 @@ export default function DeliveryTrackingScreen() {
   };
 
   const handleCancelOrder = (reason: CancelReason) => {
-    if (!focusOrder) return;
-    setShowCancelModal(false);
+    const targetId = cancelTargetId;
+    if (!targetId) return;
+    setCancelTargetId(null);
     void runAction(async () => {
-      await cancelOrder.mutateAsync({ orderId: focusOrder.id, reason });
-      router.replace('/home');
+      await cancelOrder.mutateAsync({ orderId: targetId, reason });
+      // Only leave the tracking screen once nothing else in this session is
+      // still active - referring one order out of a batch keeps the rest going.
+      const stillActive = sessionOrders.some(
+        (o) => o.id !== targetId && o.status !== 'delivered' && o.status !== 'cancelled' && o.status !== 'refunded'
+      );
+      if (!stillActive) router.replace('/home');
     });
   };
 
@@ -219,13 +271,17 @@ export default function DeliveryTrackingScreen() {
   const offer = !isBatch ? pool.data?.[0] : undefined;
   const offerView = offer ? toOrderView(offer, stations.data) : null;
   const offerExpiresAt = useOfferWindows(offer ? [offer.id] : []);
+  // Closing the popup just hides it; a fresh offer (different id) always
+  // starts shown again.
+  const [offerDismissed, setOfferDismissed] = useState(false);
+  useEffect(() => setOfferDismissed(false), [offer?.id]);
 
   const handleAcceptOffer = async () => {
     if (!offer) return;
     try {
       await acceptOffer.mutateAsync(offer.id);
     } catch (error) {
-      Alert.alert('Error', errorMessage(error));
+      Alert.alert('Error', orderAcceptErrorMessage(error));
     }
   };
 
@@ -251,26 +307,50 @@ export default function DeliveryTrackingScreen() {
     );
   }
 
-  const trackingOrder = isBatch
-    ? {
-        customerName: focusView.customerName,
-        customerPhone: focusView.customerPhone,
-        cylinderSize: focusView.cylinderSize,
-        amount: batch.remaining.reduce((sum, o) => sum + o.pricing.gasTotal, 0),
-        tip: batch.remaining.reduce((sum, o) => sum + o.pricing.tip, 0),
-        cylinderCount: batch.remaining.length,
-      }
-    : focusView;
+  // Filling is the one leg where the batch rider handles every cylinder at
+  // once, so its card aggregates the whole batch. Once delivering, the rider
+  // is back to one order at a time - focusView (batch.upNext) is already that.
+  const trackingOrder =
+    isBatch && !batch.delivering
+      ? {
+          customerName: focusView.customerName,
+          customerPhone: focusView.customerPhone,
+          cylinderSize: focusView.cylinderSize,
+          amount: batch.remaining.reduce((sum, o) => sum + o.pricing.gasTotal, 0),
+          tip: batch.remaining.reduce((sum, o) => sum + o.pricing.tip, 0),
+          cylinderCount: batch.remaining.length,
+        }
+      : focusView;
 
   const { headerTitle: singleHeaderTitle, steps, stage, showContactRow, buttonLabel } = PHASE_CONFIG[phase];
   const headerTitle = isBatch ? (batch.delivering ? 'On the Way to Customer' : 'Heading to filling station') : singleHeaderTitle;
   const focusFlagged = !!flaggedIds[focusOrder.id];
-  const canAct = isBatch ? batch.remaining.length > 0 : !!single && single.status !== 'delivered';
+  // While heading to the filling station (batch) or the customer for pickup
+  // (single), arrival auto-advances the order; the single-order filling leg
+  // auto-advances on its own timer too (see the effects above). None of
+  // those legs need a manual action.
+  const canAct = isBatch
+    ? batch.delivering && batch.remaining.length > 0
+    : !!single && single.status !== 'delivered' && phase !== 'toUserPickup' && phase !== 'toStation';
   // Section 2.1, step 8: only cancellable before the cylinder is picked up.
   const canCancel = focusOrder.status === 'rider_assigned';
 
   const batchEarned = sessionOrders.reduce((sum, o) => sum + (o.riderCommission ?? 0) + o.pricing.tip, 0);
   const completeEarned = isBatch ? batchEarned : focusView.earnings;
+
+  // The warning icon is the single entry point for both reporting a problem
+  // and cancelling: cancelling is only offered while it's still possible.
+  const handleIssuePress = () => {
+    if (!canCancel) {
+      setShowIssueModal(true);
+      return;
+    }
+    Alert.alert('What do you need?', undefined, [
+      { text: 'Report an issue', onPress: () => setShowIssueModal(true) },
+      { text: 'Cancel order', style: 'destructive', onPress: () => setCancelTargetId(focusOrder.id) },
+      { text: 'Dismiss', style: 'cancel' },
+    ]);
+  };
 
   return (
     <View style={styles.main}>
@@ -287,40 +367,41 @@ export default function DeliveryTrackingScreen() {
         routeColor={routeColor}
       />
 
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <BackButton />
         <Text style={styles.headerTitle}>{headerTitle}</Text>
-        <View style={styles.headerSpacer} />
+        {focusView.customerPhone ? (
+          <TouchableOpacity
+            style={styles.callButton}
+            onPress={() => Linking.openURL(`tel:${focusView.customerPhone}`)}
+            accessibilityRole="button"
+            accessibilityLabel="Call customer"
+          >
+            <PhoneCallDuotoneIcon />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerSpacer} />
+        )}
       </View>
 
       <View style={styles.bottomSheet}>
         {isBatch ? (
           batch.delivering ? (
-            <View style={styles.queueCard}>
-              <View style={styles.queueHandle} />
-              <View style={styles.queueHeaderRow}>
-                <Text style={styles.queueTitle}>Order Queue</Text>
-                {!!batch.upNext && (
-                  <TouchableOpacity style={styles.reportIssueIconButton} onPress={() => setShowIssueModal(true)}>
-                    <WarningIcon />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View style={styles.queueList}>
-                {batch.queue.map((o, index) => (
-                  <React.Fragment key={o.id}>
-                    <OrderQueueRow index={index + 1} order={o} variant="status" />
-                    {index < batch.queue.length - 1 && <View style={styles.divider} />}
-                  </React.Fragment>
-                ))}
-              </View>
-            </View>
+            // One order at a time once delivering - the rest of the queue is
+            // managed from the home screen, not re-shown here.
+            <TrackingOrderCard
+              order={trackingOrder}
+              stage="completed"
+              steps={['filling', 'completed']}
+              showContactRow
+              onReportIssue={handleIssuePress}
+            />
           ) : (
             <TrackingOrderCard
               order={trackingOrder}
               stage="filling"
               steps={['arrived', 'filling', 'completed']}
-              onReportIssue={() => setShowIssueModal(true)}
+              onReportIssue={handleIssuePress}
             />
           )
         ) : (
@@ -330,7 +411,7 @@ export default function DeliveryTrackingScreen() {
             steps={steps}
             showContactRow={showContactRow}
             activeProgress={phase === 'toUserPickup' ? pickupProgress : undefined}
-            onReportIssue={!focusFlagged ? () => setShowIssueModal(true) : undefined}
+            onReportIssue={!focusFlagged ? handleIssuePress : undefined}
           />
         )}
 
@@ -350,15 +431,7 @@ export default function DeliveryTrackingScreen() {
             onPress={handlePrimaryAction}
             disabled={busy}
           >
-            <Text style={styles.completeButtonText}>
-              {isBatch ? (batch.delivering ? 'Complete Delivery' : 'Start Filling') : buttonLabel}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {canCancel && (
-          <TouchableOpacity style={styles.cancelOrderLink} onPress={() => setShowCancelModal(true)} disabled={busy}>
-            <Text style={styles.cancelOrderLinkText}>Cancel order</Text>
+            <Text style={styles.completeButtonText}>{isBatch ? 'Complete Delivery' : buttonLabel}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -371,17 +444,19 @@ export default function DeliveryTrackingScreen() {
       />
 
       <CancelOrderModal
-        visible={showCancelModal}
-        onCancel={() => setShowCancelModal(false)}
+        visible={!!cancelTargetId}
+        onCancel={() => setCancelTargetId(null)}
         onSubmit={handleCancelOrder}
       />
 
       <NewOrderRequestModal
-        visible={!!offerView}
+        visible={!!offerView && !offerDismissed}
         order={offerView}
         offerExpiresAt={offer ? offerExpiresAt(offer.id) : new Date().toISOString()}
         onAccept={handleAcceptOffer}
         onDecline={handleDeclineOffer}
+        onDismiss={() => setOfferDismissed(true)}
+        busy={acceptOffer.isPending || declineOffer.isPending}
       />
 
       <DeliveryCompleteModal
@@ -421,7 +496,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.1)',
-    paddingTop: 16,
     paddingBottom: 16,
     paddingHorizontal: 16,
     flexDirection: 'row',
@@ -430,6 +504,14 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 36,
+  },
+  callButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#F6F6F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 16,
@@ -442,51 +524,6 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 32,
     gap: 12,
-  },
-  queueCard: {
-    backgroundColor: '#FAFAFA',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-    borderRadius: 20,
-    paddingTop: 2,
-    paddingBottom: 8,
-    gap: 12,
-  },
-  queueHandle: {
-    alignSelf: 'center',
-    width: 49,
-    height: 4,
-    borderRadius: 4,
-    backgroundColor: '#F4F4F4',
-    marginTop: 8,
-  },
-  queueHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-  },
-  queueTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
-  },
-  queueList: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginHorizontal: 8,
-    paddingVertical: 8,
-    gap: 12,
-    shadowColor: 'rgba(12,12,13,0.15)',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    marginHorizontal: 12,
   },
   completeButton: {
     height: 52,
@@ -504,25 +541,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 15,
-  },
-  cancelOrderLink: {
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  cancelOrderLinkText: {
-    color: '#B42318',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  reportIssueIconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(180,35,24,0.3)',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   issueBanner: {
     flexDirection: 'row',

@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import ModalCloseButton from '../../../components/ModalCloseButton';
 import { errorMessage } from '../../../lib/api/client';
 import { useRequestCapacity } from '../hooks';
 
@@ -51,6 +52,7 @@ export default function CapacityRequestModal({ visible, currentLimit, onClose }:
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.sheet}>
+          <ModalCloseButton onPress={handleClose} />
           <Text style={styles.title}>Request a higher order limit</Text>
           <Text style={styles.subtitle}>Your current limit is {currentLimit} orders at a time.</Text>
 
@@ -107,6 +109,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
+    paddingRight: 32,
   },
   subtitle: {
     fontSize: 13,

@@ -126,7 +126,7 @@ export const MapPinDuotoneIcon = () => (
   </Svg>
 );
 
-export const ArrowDownIcon = () => (
+export const ArrowDownIcon = ({ color = 'black', opacity = 0.6 }: { color?: string; opacity?: number }) => (
   <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
     <Path
       d="M19.92 8.95L13.4 15.47C12.63 16.24 11.37 16.24 10.6 15.47L4.08 8.95"
@@ -134,8 +134,8 @@ export const ArrowDownIcon = () => (
       strokeMiterlimit={10}
       strokeLinecap="round"
       strokeLinejoin="round"
-      stroke="black"
-      strokeOpacity={0.6}
+      stroke={color}
+      strokeOpacity={opacity}
     />
   </Svg>
 );
