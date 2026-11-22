@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { User, Camera, Image as ImageIcon } from 'phosphor-react-native';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
@@ -18,6 +18,8 @@ interface PickedPhoto {
 
 export default function ProfilePhotoScreen() {
   const router = useRouter();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const editing = mode === 'edit';
   const setUser = useAuthStore((s) => s.setUser);
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
   const [saving, setSaving] = useState(false);
@@ -63,7 +65,8 @@ export default function ProfilePhotoScreen() {
     try {
       const rider = await uploadProfilePhoto(photo.uri, photo.mimeType);
       setUser(rider);
-      router.replace(nextRoute(rider));
+      if (editing) router.back();
+      else router.replace(nextRoute(rider));
     } catch (error) {
       Alert.alert('Error', errorMessage(error));
     } finally {
@@ -74,7 +77,8 @@ export default function ProfilePhotoScreen() {
   const handleDevSkip = () => {
     const rider = mockSetPhoto();
     setUser(rider);
-    router.replace(nextRoute(rider));
+    if (editing) router.back();
+      else router.replace(nextRoute(rider));
   };
 
   return (
@@ -85,7 +89,7 @@ export default function ProfilePhotoScreen() {
 
       <View style={styles.content}>
         <View style={styles.titleGroup}>
-          <Text style={styles.title}>Add a profile photo</Text>
+          <Text style={styles.title}>{editing ? 'Change your profile photo' : 'Add a profile photo'}</Text>
           <Text style={styles.subtitle}>Customers see this when you arrive to pick up or deliver.</Text>
         </View>
 
@@ -111,7 +115,7 @@ export default function ProfilePhotoScreen() {
         </View>
 
         <PrimaryButton
-          title={saving ? 'Saving...' : 'Continue'}
+          title={saving ? 'Saving...' : editing ? 'Save' : 'Continue'}
           disabled={isButtonDisabled}
           onPress={handleContinue}
           style={styles.continueButton}

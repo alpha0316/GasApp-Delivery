@@ -21,6 +21,12 @@ export const patchOrderStatus = (orderId: string, status: RiderTargetStatus) =>
 export const cancelOrder = (orderId: string, reason: CancelReason) =>
   api<{ order: ApiOrder; rider: User }>(`/rider/orders/${orderId}/cancel`, { method: 'POST', body: { reason } });
 
+// Hands a queued order back to the pool so other riders can accept it.
+// Like cancel, only valid before pickup - but no reason and no strike: the
+// order isn't dropped, just passed on.
+export const referOrder = (orderId: string) =>
+  api<{ order: ApiOrder; rider: User }>(`/rider/orders/${orderId}/refer`, { method: 'POST' });
+
 export const postCashCollected = (orderId: string) =>
   api<{ payment: Payment }>(`/rider/orders/${orderId}/cash-collected`, { method: 'POST' });
 

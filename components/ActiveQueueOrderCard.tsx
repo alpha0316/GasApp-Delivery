@@ -1,15 +1,17 @@
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ArrowsCounterClockwise, ArrowSquareOut, DotsSixVertical } from 'phosphor-react-native';
-import { QueueOrder } from '../types/order';
+import React, { useState } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ArrowSquareOut, CaretDown, Phone } from 'phosphor-react-native';
+import { BoxIcon, ClipboardTextIcon, MapPinDuotoneIcon } from './icons/OrderCardIcons';
 import { formatMinor } from '../lib/format/money';
-import { formatClock } from '../features/orders/mappers';
+import { Order } from '../types/order';
+
+export type QueuedOrder = Pick<
+  Order,
+  'customerName' | 'customerPhone' | 'tip' | 'cylinderCount' | 'cylinderSize' | 'amount' | 'dropoffAddress'
+>;
 
 interface ActiveQueueOrderCardProps {
-  index: number;
-  order: QueueOrder;
-  // null while the rider's position or the order's distance isn't known yet.
-  distanceKm: number | null;
+  order: QueuedOrder;
   // A queued order can only be referred back to the pool before pickup -
   // mirrors the backend's cancel-before-pickup rule (section 2.1, step 8).
   canRefer: boolean;
@@ -17,231 +19,256 @@ interface ActiveQueueOrderCardProps {
   onViewOrder: () => void;
 }
 
-export default function ActiveQueueOrderCard({
-  index,
-  order,
-  distanceKm,
-  canRefer,
-  onRefer,
-  onViewOrder,
-}: ActiveQueueOrderCardProps) {
+// One order waiting in the rider's active queue on Home. The header toggles
+// the details; "View Order" opens the full card in a sheet.
+export default function ActiveQueueOrderCard({ order, canRefer, onRefer, onViewOrder }: ActiveQueueOrderCardProps) {
+  const [expanded, setExpanded] = useState(true);
+
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
-        <View style={styles.indexBadge}>
-          <Text style={styles.indexText}>{index}</Text>
-        </View>
-        <DotsSixVertical size={16} color="rgba(0,0,0,0.3)" />
-        <View style={styles.customer}>
-          <Text style={styles.name}>{order.customerName}</Text>
+    <View style={styles.outer}>
+      <TouchableOpacity
+        style={styles.headerRow}
+        onPress={() => setExpanded((open) => !open)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${order.customerName}'s order`}
+      >
+        <View style={styles.contact}>
+          <Text style={styles.name} numberOfLines={1}>
+            {order.customerName}
+          </Text>
           {!!order.customerPhone && <Text style={styles.phone}>{order.customerPhone}</Text>}
         </View>
-        <Text style={styles.earning}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
-      </View>
-
-      <View style={styles.locs}>
-        <View style={styles.locRow}>
-          <View style={[styles.locDot, styles.locDotStation]} />
-          <Text style={styles.locText}>
-            <Text style={styles.locName}>{order.stationName || 'Filling station'}</Text>
-          </Text>
+        <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
+        <View style={!expanded && styles.caretCollapsed}>
+          <CaretDown size={18} color="rgba(0,0,0,0.6)" />
         </View>
-        <View style={styles.locRow}>
-          <View style={[styles.locDot, styles.locDotDeliver]} />
-          <Text style={styles.locText} numberOfLines={1}>
-            <Text style={styles.locName}>{order.area}</Text>
-          </Text>
-        </View>
-      </View>
+      </TouchableOpacity>
 
-      <View style={styles.chipsRow}>
-        {distanceKm !== null && (
-          <View style={[styles.chip, styles.chipDist]}>
-            <Text style={styles.chipDistText}>📍 {distanceKm.toFixed(1)} km</Text>
+      {expanded && (
+        <View style={styles.card}>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <ClipboardTextIcon />
+              <Text style={styles.orderLabel}>Order</Text>
+            </View>
+            <View style={[styles.summaryItem, styles.cylinderItem]}>
+              <BoxIcon />
+              <Text style={styles.cylinderCount}>
+                {order.cylinderCount}{' '}
+                <Text style={styles.cylinderCountMuted}>cylinder{order.cylinderCount === 1 ? '' : 's'}</Text>
+              </Text>
+            </View>
           </View>
-        )}
-        <View style={styles.chip}>
-          <Text style={styles.chipText}>{formatClock(new Date(order.createdAt))}</Text>
-        </View>
-        <View style={styles.chip}>
-          <Text style={styles.chipText}>
-            {order.cylinderSize} cylinder · ₵ {formatMinor(order.amount)}
-          </Text>
-        </View>
-      </View>
 
-      <View style={styles.actionsRow}>
-        <TouchableOpacity
-          style={styles.referButton}
-          onPress={onRefer}
-          disabled={!canRefer}
-          accessibilityRole="button"
-          accessibilityLabel="Refer to riders"
-        >
-          <ArrowsCounterClockwise size={13} color={canRefer ? '#B42318' : 'rgba(180,35,24,0.3)'} weight="bold" />
-          <Text style={[styles.referText, !canRefer && styles.referTextDisabled]}>Refer to riders</Text>
-        </TouchableOpacity>
-        <View style={styles.actionsDivider} />
-        <TouchableOpacity
-          style={styles.viewButton}
-          onPress={onViewOrder}
-          accessibilityRole="button"
-          accessibilityLabel="View order"
-        >
-          <ArrowSquareOut size={13} color="#0088FF" weight="bold" />
-          <Text style={styles.viewText}>View Order</Text>
-        </TouchableOpacity>
-      </View>
+          <View style={styles.detailRow}>
+            <View style={styles.address}>
+              <MapPinDuotoneIcon />
+              <Text style={styles.addressText} numberOfLines={1}>
+                {order.dropoffAddress}
+              </Text>
+            </View>
+            <View style={styles.dot} />
+            <View style={styles.size}>
+              <Image
+                source={require('../assets/images/order-card/cylinder.png')}
+                style={styles.cylinderImage}
+                resizeMode="contain"
+              />
+              <Text style={styles.sizeText}>{order.cylinderSize} Size</Text>
+              <Text style={styles.amount}>₵ {formatMinor(order.amount)}</Text>
+            </View>
+          </View>
+
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.referButton, !canRefer && styles.buttonDisabled]}
+              onPress={onRefer}
+              disabled={!canRefer}
+              accessibilityRole="button"
+              accessibilityLabel="Refer to other riders"
+              accessibilityState={{ disabled: !canRefer }}
+            >
+              <Phone size={18} color="#FF8D28" weight="fill" />
+              <Text style={styles.referText}>Refer To Other Riders</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.viewButton}
+              onPress={onViewOrder}
+              accessibilityRole="button"
+              accessibilityLabel="View order"
+            >
+              <ArrowSquareOut size={18} color="#0088FF" weight="bold" />
+              <Text style={styles.viewText}>View Order</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
+  outer: {
     backgroundColor: '#FAFAFA',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)',
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    paddingTop: 12,
     gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 8,
   },
-  indexBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.1)',
+  headerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 4,
   },
-  indexText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(0,0,0,0.5)',
-  },
-  customer: {
+  contact: {
     flex: 1,
-    minWidth: 0,
+    gap: 4,
   },
   name: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
     color: '#000',
   },
   phone: {
-    fontSize: 11,
-    color: 'rgba(0,0,0,0.5)',
-    marginTop: 2,
+    fontSize: 12,
+    color: 'rgba(0,0,0,0.6)',
   },
-  earning: {
-    fontSize: 13,
+  tip: {
+    fontSize: 14,
     fontWeight: '500',
     color: '#34C759',
-    flexShrink: 0,
   },
-  locs: {
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    gap: 6,
+  caretCollapsed: {
+    transform: [{ rotate: '-90deg' }],
   },
-  locRow: {
+  card: {
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 20,
+    padding: 8,
+    gap: 14,
+    shadowColor: 'rgba(12,12,13,0.15)',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
   },
-  locDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    flexShrink: 0,
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
-  locDotStation: {
-    backgroundColor: '#0088FF',
+  cylinderItem: {
+    gap: 4,
   },
-  locDotDeliver: {
-    backgroundColor: '#34C759',
-  },
-  locText: {
+  orderLabel: {
     fontSize: 12,
-    color: 'rgba(0,0,0,0.5)',
-    flexShrink: 1,
+    color: 'rgba(0,0,0,0.4)',
   },
-  locName: {
+  cylinderCount: {
+    fontSize: 12,
     fontWeight: '500',
     color: '#000',
   },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingBottom: 10,
-  },
-  chip: {
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
-    backgroundColor: '#fff',
-  },
-  chipText: {
-    fontSize: 10,
-    fontWeight: '500',
+  cylinderCountMuted: {
+    fontWeight: '400',
     color: 'rgba(0,0,0,0.5)',
   },
-  chipDist: {
-    backgroundColor: 'rgba(0,136,255,0.06)',
-    borderColor: 'rgba(0,136,255,0.2)',
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
   },
-  chipDistText: {
-    fontSize: 10,
+  address: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+  addressText: {
+    flexShrink: 1,
+    fontSize: 13,
     fontWeight: '500',
-    color: '#0088FF',
+    color: '#000',
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  size: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  cylinderImage: {
+    width: 10,
+    height: 16,
+  },
+  sizeText: {
+    fontSize: 13,
+    color: '#000',
+  },
+  amount: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#000',
   },
   actionsRow: {
     flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    gap: 8,
   },
   referButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 10,
+    gap: 8,
+    backgroundColor: 'rgba(255,141,40,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,141,40,0.25)',
+    borderRadius: 32,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
   },
   referText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#B42318',
-  },
-  referTextDisabled: {
-    color: 'rgba(180,35,24,0.3)',
-  },
-  actionsDivider: {
-    width: 1,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FF8D28',
   },
   viewButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 10,
+    gap: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+    borderRadius: 32,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
   },
   viewText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '600',
     color: '#0088FF',
+  },
+  buttonDisabled: {
+    opacity: 0.4,
   },
 });

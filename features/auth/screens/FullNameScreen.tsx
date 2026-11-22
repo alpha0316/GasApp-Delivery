@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
 import { errorMessage } from '../../../lib/api/client';
@@ -14,9 +14,14 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function FullNameScreen() {
   const router = useRouter();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const editing = mode === 'edit';
+  const currentUser = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState(
+    editing ? `${currentUser?.firstName ?? ''} ${currentUser?.lastName ?? ''}`.trim() : ''
+  );
+  const [email, setEmail] = useState(editing ? (currentUser?.email ?? '') : '');
   const [saving, setSaving] = useState(false);
 
   const emailValid = email.trim().length === 0 || EMAIL_PATTERN.test(email.trim());
@@ -28,7 +33,8 @@ export default function FullNameScreen() {
     try {
       const { user } = await updateName(firstName, lastName, email.trim() || undefined);
       setUser(user);
-      router.replace(nextRoute(user));
+      if (editing) router.back();
+      else router.replace(nextRoute(user));
     } catch (error) {
       Alert.alert('Error', errorMessage(error));
     } finally {
@@ -88,7 +94,7 @@ export default function FullNameScreen() {
         />
         {!emailValid && <Text style={styles.errorText}>Enter a valid email or leave it blank.</Text>}
 
-        <PrimaryButton title="Continue" disabled={isButtonDisabled} onPress={handleContinue} />
+        <PrimaryButton title={editing ? 'Save' : 'Continue'} disabled={isButtonDisabled} onPress={handleContinue} />
       </View>
     </SafeAreaView>
   );

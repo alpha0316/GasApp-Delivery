@@ -644,6 +644,9 @@ let rider: User = seed.rider;
 let poolOrders: ApiOrder[] = seed.pool;
 let riderOrders: ApiOrder[] = seed.orders;
 let orderIssues: Record<string, OrderIssueReport[]> = seed.issues ?? {};
+// Orders this rider referred back to the pool: other riders see them again,
+// but they're never offered back to the rider who passed them on.
+let referredAway = new Set<string>();
 
 // The sign-in token survives JS reloads (it's in SecureStore), but this
 // module's in-memory rider does not. Without persisting it too, a reload
@@ -696,6 +699,7 @@ export function mockSwitchScenario(scenario: MockScenario): User {
   poolOrders = data.pool;
   riderOrders = data.orders;
   orderIssues = data.issues ?? {};
+  referredAway = new Set();
   CAPACITY_REQUESTS.length = 0;
   void SecureStore.setItemAsync(MOCK_RIDER_KEY, JSON.stringify(rider)).catch(() => {});
   void SecureStore.setItemAsync(MOCK_SCENARIO_KEY, scenario).catch(() => {});
@@ -835,7 +839,7 @@ export async function mockApi<T>(
 
   if (match('/rider/orders/available') && method === 'GET') {
     // A suspended rider can't go online, so the pool stays hidden.
-    return wait({ orders: rider.suspended ? [] : poolOrders } as T);
+    return wait({ orders: rider.suspended ? [] : poolOrders.filter((o) => !referredAway.has(o.id)) } as T);
   }
 
   if (match('/rider/orders') && method === 'GET') {
@@ -982,6 +986,36 @@ export async function mockApi<T>(
     }
     setRider(nextRider);
     return wait({ order: updated, rider: nextRider } as T);
+  }
+
+  const referMatch = matchRoute('/rider/orders/:id/refer', path);
+  if (referMatch && method === 'POST') {
+    const index = riderOrders.findIndex((order) => order.id === referMatch.id);
+    if (index === -1) throw notFound();
+    const order = riderOrders[index];
+    if (order.status !== 'rider_assigned') {
+      throw new Error('This order has already been picked up and can no longer be referred.');
+    }
+    riderOrders.splice(index, 1);
+    // Back to how a pool order looks: no customer contact, estimated earnings.
+    const backInPool: ApiOrder = {
+      ...order,
+      status: 'awaiting_rider',
+      customerId: typeof order.customerId === 'string' ? order.customerId : order.customerId.id,
+      riderCommission: undefined,
+      estimatedEarnings: order.riderCommission,
+      platformFeeLocked: false,
+      updatedAt: new Date().toISOString(),
+    };
+    poolOrders = [backInPool, ...poolOrders.filter((o) => o.id !== order.id)];
+    referredAway.add(order.id);
+
+    const nextRider: User = { ...rider, activeOrderCount: Math.max(0, rider.activeOrderCount - 1) };
+    if (order.platformFeeLocked) {
+      nextRider.walletLocked = Math.max(0, (nextRider.walletLocked ?? 0) - order.pricing.serviceFee);
+    }
+    setRider(nextRider);
+    return wait({ order: backInPool, rider: nextRider } as T);
   }
 
   const cashMatch = matchRoute('/rider/orders/:id/cash-collected', path);

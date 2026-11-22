@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
 import { errorMessage } from '../../../lib/api/client';
@@ -12,6 +12,8 @@ import { useUpdateProfile } from '../hooks';
 
 export default function VehicleDetailsScreen() {
   const router = useRouter();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const editing = mode === 'edit';
   const user = useAuthStore((s) => s.user);
   const updateProfile = useUpdateProfile();
 
@@ -34,7 +36,8 @@ export default function VehicleDetailsScreen() {
         plateNumber: value.plateNumber.trim(),
         cylinderCapacity: value.cylinderCapacity,
       });
-      router.replace(nextRoute(rider));
+      if (editing) router.back();
+      else router.replace(nextRoute(rider));
     } catch (error) {
       Alert.alert('Error', errorMessage(error));
     }
@@ -44,7 +47,7 @@ export default function VehicleDetailsScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <BackButton />
-        <Text style={styles.headerTitle}>Your Vehicle</Text>
+        <Text style={styles.headerTitle}>{editing ? 'Vehicle & Area' : 'Your Vehicle'}</Text>
       </View>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <VehicleForm value={value} onChange={setValue} />
@@ -52,7 +55,7 @@ export default function VehicleDetailsScreen() {
 
       <View style={styles.footer}>
         <PrimaryButton
-          title={updateProfile.isPending ? 'Saving...' : 'Continue'}
+          title={updateProfile.isPending ? 'Saving...' : editing ? 'Save' : 'Continue'}
           disabled={isButtonDisabled}
           onPress={handleContinue}
         />

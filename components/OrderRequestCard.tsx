@@ -14,26 +14,36 @@ import {
 interface OrderRequestCardProps {
   order: Order;
   // ISO timestamp: the primary notification window (section 3.2) auto-declines
-  // the offer once this passes.
-  offerExpiresAt: string;
-  onAccept: () => void;
-  onDecline: () => void;
+  // the offer once this passes. Omit it (e.g. for an order already in the
+  // rider's queue) to show the card with no countdown.
+  offerExpiresAt?: string;
+  onAccept?: () => void;
+  onDecline?: () => void;
   onViewLocation?: () => void;
   onFlag?: () => void;
   // While an accept/decline request is in flight: dims and disables both
   // buttons so a tap always gives visible feedback, even on a slow network.
   busy?: boolean;
+  // false hides the Decline/Accept row, for when a parent (e.g. the floating
+  // sheet) shows those buttons itself.
+  showActions?: boolean;
+  // Seconds left on the offer, when a parent already runs the countdown. The
+  // card then only displays it and leaves auto-decline to that parent.
+  secondsLeft?: number;
 }
 
-const secondsUntil = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
+export const secondsUntil = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
 
-function useOfferCountdown(offerExpiresAt: string, onExpire: () => void) {
-  const [secondsLeft, setSecondsLeft] = useState(() => secondsUntil(offerExpiresAt));
+// Ticks down to offerExpiresAt and calls onExpire once when it reaches 0.
+// Pass no onExpire to only display the time.
+export function useOfferCountdown(offerExpiresAt: string | undefined, onExpire?: () => void) {
+  const [secondsLeft, setSecondsLeft] = useState(() => (offerExpiresAt ? secondsUntil(offerExpiresAt) : 0));
   const expiredRef = useRef(false);
   const onExpireRef = useRef(onExpire);
   onExpireRef.current = onExpire;
 
   useEffect(() => {
+    if (!offerExpiresAt) return;
     expiredRef.current = false;
     setSecondsLeft(secondsUntil(offerExpiresAt));
     const interval = setInterval(() => {
@@ -41,7 +51,7 @@ function useOfferCountdown(offerExpiresAt: string, onExpire: () => void) {
       setSecondsLeft(remaining);
       if (remaining <= 0 && !expiredRef.current) {
         expiredRef.current = true;
-        onExpireRef.current();
+        onExpireRef.current?.();
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -58,13 +68,17 @@ export default function OrderRequestCard({
   onViewLocation,
   onFlag,
   busy = false,
+  showActions = true,
+  secondsLeft: secondsLeftProp,
 }: OrderRequestCardProps) {
-  const secondsLeft = useOfferCountdown(offerExpiresAt, onDecline);
+  const ownSecondsLeft = useOfferCountdown(offerExpiresAt, secondsLeftProp === undefined ? onDecline : undefined);
+  const secondsLeft = secondsLeftProp ?? ownSecondsLeft;
   const urgent = secondsLeft <= 10;
   // Once the countdown hits 0, decline fires, but disabling locally right
   // away (rather than waiting on that mutation + the pool refetch) closes
   // the window where a tap can still land on an order that's already gone.
-  const disabled = busy || secondsLeft <= 0;
+  const hasCountdown = !!offerExpiresAt;
+  const disabled = busy || (hasCountdown && secondsLeft <= 0);
 
   return (
     <View style={styles.outer}>
@@ -74,9 +88,11 @@ export default function OrderRequestCard({
           {!!order.customerPhone && <Text style={styles.phone}>{order.customerPhone}</Text>}
         </View>
         <View style={styles.headerRight}>
-          <View style={[styles.countdownPill, urgent && styles.countdownPillUrgent]}>
-            <Text style={[styles.countdownText, urgent && styles.countdownTextUrgent]}>{secondsLeft}s</Text>
-          </View>
+          {hasCountdown && (
+            <View style={[styles.countdownPill, urgent && styles.countdownPillUrgent]}>
+              <Text style={[styles.countdownText, urgent && styles.countdownTextUrgent]}>{secondsLeft}s</Text>
+            </View>
+          )}
           <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
         </View>
       </View>
@@ -91,9 +107,7 @@ export default function OrderRequestCard({
             <BoxIcon />
             <Text style={styles.cylinderCount}>
               {order.cylinderCount}{' '}
-              <Text style={styles.cylinderCountMuted}>
-                cylinder{order.cylinderCount > 1 ? 's' : ''}
-              </Text>
+              <Text style={styles.cylinderCountMuted}>cylinder{order.cylinderCount > 1 ? 's' : ''}</Text>
             </Text>
           </View>
         </View>
@@ -143,27 +157,29 @@ export default function OrderRequestCard({
           <Text style={styles.amount}>₵ {formatMinor(order.amount)}</Text>
         </View>
 
-        <View style={styles.actionsRow}>
-          {onFlag && (
-            <TouchableOpacity style={styles.flagButton} onPress={onFlag}>
-              <FlagIcon />
+        {showActions && (
+          <View style={styles.actionsRow}>
+            {onFlag && (
+              <TouchableOpacity style={styles.flagButton} onPress={onFlag}>
+                <FlagIcon />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.declineButton, disabled && styles.buttonBusy]}
+              onPress={onDecline}
+              disabled={disabled}
+            >
+              <Text style={styles.declineText}>Decline</Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={[styles.declineButton, disabled && styles.buttonBusy]}
-            onPress={onDecline}
-            disabled={disabled}
-          >
-            <Text style={styles.declineText}>Decline</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.acceptButton, disabled && styles.buttonBusy]}
-            onPress={onAccept}
-            disabled={disabled}
-          >
-            <Text style={styles.acceptText}>Accept</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[styles.acceptButton, disabled && styles.buttonBusy]}
+              onPress={onAccept}
+              disabled={disabled}
+            >
+              <Text style={styles.acceptText}>Accept</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </View>
   );

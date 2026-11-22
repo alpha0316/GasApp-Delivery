@@ -6,6 +6,7 @@ import BackButton from '../../../components/BackButton';
 import CancelOrderModal from '../../../components/CancelOrderModal';
 import TrackingOrderCard from '../../../components/TrackingOrderCard';
 import NewOrderRequestModal from '../../../components/NewOrderRequestModal';
+import NextRideSheet from '../../../components/NextRideSheet';
 import DeliveryCompleteModal from '../../../components/DeliveryCompleteModal';
 import ReportOrderIssueModal from '../../../components/ReportOrderIssueModal';
 import { PhoneCallDuotoneIcon, WarningIcon } from '../../../components/icons/OrderCardIcons';
@@ -44,6 +45,12 @@ const ARRIVAL_RADIUS_METERS = 60;
 // StatusTimeline's default "Arriving in 5 minutes" estimate. "Filled up" is
 // automatic once this elapses, no manual tap needed.
 const FILLING_DURATION_MS = 5 * 60_000;
+
+// iOS can't present a modal while another is still animating closed - the
+// second one silently never appears. Opening the next sheet after the first
+// has finished closing avoids that.
+const MODAL_CLOSE_MS = 400;
+const afterModalCloses = (open: () => void) => setTimeout(open, MODAL_CLOSE_MS);
 
 // How long the bike takes to glide to a new GPS fix.
 const PHASE_CONFIG: Record<
@@ -107,6 +114,18 @@ export default function DeliveryTrackingScreen() {
   // current focus order here; referring other queued orders happens on Home.
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // After a delivery, while more orders are queued: start the next or refer it.
+  const [showNextSheet, setShowNextSheet] = useState(false);
+  // Orders referred from that sheet, hidden straight away rather than waiting
+  // for the orders refetch to drop them.
+  const [referredIds, setReferredIds] = useState<string[]>([]);
+
+  // Orders waiting after this session. Flagged orders stay active on the server but are skipped.
+  const queue = useMemo(
+    () => activeOrders.filter((o) => !sessionIds.includes(o.id) && !flaggedIds[o.id] && !referredIds.includes(o.id)),
+    [activeOrders, sessionIds, flaggedIds, referredIds]
+  );
+  const nextOrder = queue[0];
 
   const sessionOrders = useMemo(
     () =>
@@ -246,6 +265,17 @@ export default function DeliveryTrackingScreen() {
     const targetId = cancelTargetId;
     if (!targetId) return;
     setCancelTargetId(null);
+    // Referred from the next-ride sheet: offer the following queued order, if any.
+    if (!sessionIds.includes(targetId)) {
+      void runAction(async () => {
+        await cancelOrder.mutateAsync({ orderId: targetId, reason });
+        setReferredIds((ids) => [...ids, targetId]);
+        const remaining = queue.filter((o) => o.id !== targetId);
+        if (remaining.length > 0) afterModalCloses(() => setShowNextSheet(true));
+        else router.replace('/home');
+      });
+      return;
+    }
     void runAction(async () => {
       await cancelOrder.mutateAsync({ orderId: targetId, reason });
       // Only leave the tracking screen once nothing else in this session is
@@ -259,13 +289,29 @@ export default function DeliveryTrackingScreen() {
 
   const handleCloseComplete = () => {
     setShowCompleteModal(false);
-    // Continue with the rest of the queue. Flagged orders stay active on the server but are skipped.
-    const next = activeOrders.filter((o) => !sessionIds.includes(o.id) && !flaggedIds[o.id]);
-    if (next.length > 0) {
-      router.replace({ pathname: '/tracking', params: { orderId: next[0].id } });
-    } else {
-      router.replace('/home');
-    }
+    // More orders queued: let the rider choose to start the next or refer it.
+    if (queue.length > 0) afterModalCloses(() => setShowNextSheet(true));
+    else router.replace('/home');
+  };
+
+  const handleStartNext = () => {
+    if (!nextOrder) return;
+    setShowNextSheet(false);
+    router.replace({ pathname: '/tracking', params: { orderId: nextOrder.id } });
+  };
+
+  const handleReferNext = () => {
+    if (!nextOrder) return;
+    setShowNextSheet(false);
+    // The cancel sheet's reasons double as the referral reasons, as on Home.
+    afterModalCloses(() => setCancelTargetId(nextOrder.id));
+  };
+
+  const handleCancelSheetClosed = () => {
+    const targetId = cancelTargetId;
+    setCancelTargetId(null);
+    // Backed out of referring a queued order: return to the next-ride choice.
+    if (targetId && !sessionIds.includes(targetId)) afterModalCloses(() => setShowNextSheet(true));
   };
 
   const offer = !isBatch ? pool.data?.[0] : undefined;
@@ -445,8 +491,23 @@ export default function DeliveryTrackingScreen() {
 
       <CancelOrderModal
         visible={!!cancelTargetId}
-        onCancel={() => setCancelTargetId(null)}
+        onCancel={handleCancelSheetClosed}
         onSubmit={handleCancelOrder}
+      />
+
+      <NextRideSheet
+        visible={showNextSheet && !!nextOrder}
+        order={nextOrder ? toOrderView(nextOrder, stations.data) : null}
+        queueCount={queue.length}
+        canRefer={nextOrder?.status === 'rider_assigned'}
+        onStart={handleStartNext}
+        onRefer={handleReferNext}
+        // Dismissing leaves the finished delivery behind; Home lists the queue.
+        onDismiss={() => {
+          setShowNextSheet(false);
+          router.replace('/home');
+        }}
+        busy={busy}
       />
 
       <NewOrderRequestModal

@@ -49,7 +49,7 @@ export function useStations() {
   });
 }
 
-function useRefreshAfterOrderChange() {
+export function useRefreshAfterOrderChange() {
   const queryClient = useQueryClient();
   return () => {
     void queryClient.invalidateQueries({ queryKey: ordersKey });
