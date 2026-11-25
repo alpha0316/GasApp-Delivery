@@ -1,7 +1,8 @@
-import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Order } from '../types/order';
 import { formatMinor } from '../lib/format/money';
+import CylinderList from './CylinderList';
 import {
   ClipboardTextIcon,
   BoxIcon,
@@ -13,19 +14,75 @@ import {
 
 interface OrderRequestCardProps {
   order: Order;
-  onAccept: () => void;
-  onDecline: () => void;
+  // ISO timestamp: the primary notification window (section 3.2) auto-declines
+  // the offer once this passes. Omit it (e.g. for an order already in the
+  // rider's queue) to show the card with no countdown.
+  offerExpiresAt?: string;
+  onAccept?: () => void;
+  onDecline?: () => void;
   onViewLocation?: () => void;
   onFlag?: () => void;
+  // While an accept/decline request is in flight: dims and disables both
+  // buttons so a tap always gives visible feedback, even on a slow network.
+  busy?: boolean;
+  acceptDisabled?: boolean;
+  // false hides the Decline/Accept row, for when a parent (e.g. the floating
+  // sheet) shows those buttons itself.
+  showActions?: boolean;
+  // Seconds left on the offer, when a parent already runs the countdown. The
+  // card then only displays it and leaves auto-decline to that parent.
+  secondsLeft?: number;
+}
+
+export const secondsUntil = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
+
+// Ticks down to offerExpiresAt and calls onExpire once when it reaches 0.
+// Pass no onExpire to only display the time.
+export function useOfferCountdown(offerExpiresAt: string | undefined, onExpire?: () => void) {
+  const [secondsLeft, setSecondsLeft] = useState(() => (offerExpiresAt ? secondsUntil(offerExpiresAt) : 0));
+  const expiredRef = useRef(false);
+  const onExpireRef = useRef(onExpire);
+  onExpireRef.current = onExpire;
+
+  useEffect(() => {
+    if (!offerExpiresAt) return;
+    expiredRef.current = false;
+    setSecondsLeft(secondsUntil(offerExpiresAt));
+    const interval = setInterval(() => {
+      const remaining = secondsUntil(offerExpiresAt);
+      setSecondsLeft(remaining);
+      if (remaining <= 0 && !expiredRef.current) {
+        expiredRef.current = true;
+        onExpireRef.current?.();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [offerExpiresAt]);
+
+  return secondsLeft;
 }
 
 export default function OrderRequestCard({
   order,
+  offerExpiresAt,
   onAccept,
   onDecline,
   onViewLocation,
   onFlag,
+  busy = false,
+  acceptDisabled = false,
+  showActions = true,
+  secondsLeft: secondsLeftProp,
 }: OrderRequestCardProps) {
+  const ownSecondsLeft = useOfferCountdown(offerExpiresAt, secondsLeftProp === undefined ? onDecline : undefined);
+  const secondsLeft = secondsLeftProp ?? ownSecondsLeft;
+  const urgent = secondsLeft <= 10;
+  // Once the countdown hits 0, decline fires, but disabling locally right
+  // away (rather than waiting on that mutation + the pool refetch) closes
+  // the window where a tap can still land on an order that's already gone.
+  const hasCountdown = !!offerExpiresAt;
+  const disabled = busy || (hasCountdown && secondsLeft <= 0);
+
   return (
     <View style={styles.outer}>
       <View style={styles.headerRow}>
@@ -33,7 +90,14 @@ export default function OrderRequestCard({
           <Text style={styles.name}>{order.customerName}</Text>
           {!!order.customerPhone && <Text style={styles.phone}>{order.customerPhone}</Text>}
         </View>
-        <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
+        <View style={styles.headerRight}>
+          {hasCountdown && (
+            <View style={[styles.countdownPill, urgent && styles.countdownPillUrgent]}>
+              <Text style={[styles.countdownText, urgent && styles.countdownTextUrgent]}>{secondsLeft}s</Text>
+            </View>
+          )}
+          <Text style={styles.tip}>+ ₵ {formatMinor(order.earnings)}</Text>
+        </View>
       </View>
 
       <View style={styles.card}>
@@ -45,10 +109,8 @@ export default function OrderRequestCard({
           <View style={styles.rowLeft}>
             <BoxIcon />
             <Text style={styles.cylinderCount}>
-              {order.cylinderCount}{' '}
-              <Text style={styles.cylinderCountMuted}>
-                cylinder{order.cylinderCount > 1 ? 's' : ''}
-              </Text>
+              {order.cylinders.length}{' '}
+              <Text style={styles.cylinderCountMuted}>cylinder{order.cylinders.length > 1 ? 's' : ''}</Text>
             </Text>
           </View>
         </View>
@@ -84,33 +146,38 @@ export default function OrderRequestCard({
 
         <DashedDivider />
 
-        <View style={styles.row}>
-          <View style={styles.detailLeft}>
-            <View style={[styles.iconBox, styles.cylinderIconBox]}>
-              <Image
-                source={require('../assets/images/order-card/cylinder.png')}
-                style={styles.cylinderImage}
-                resizeMode="contain"
-              />
-            </View>
-            <Text style={styles.sizeLabel}>{order.cylinderSize} Size</Text>
-          </View>
-          <Text style={styles.amount}>₵ {formatMinor(order.amount)}</Text>
-        </View>
+        <CylinderList cylinders={order.cylinders} />
 
-        <View style={styles.actionsRow}>
-          {onFlag && (
-            <TouchableOpacity style={styles.flagButton} onPress={onFlag}>
-              <FlagIcon />
+        {order.cylinders.length > 1 && (
+          <View style={styles.row}>
+            <Text style={styles.sizeLabel}>Total gas</Text>
+            <Text style={styles.amount}>₵ {formatMinor(order.amount)}</Text>
+          </View>
+        )}
+
+        {showActions && (
+          <View style={styles.actionsRow}>
+            {onFlag && (
+              <TouchableOpacity style={styles.flagButton} onPress={onFlag}>
+                <FlagIcon />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.declineButton, disabled && styles.buttonBusy]}
+              onPress={onDecline}
+              disabled={disabled}
+            >
+              <Text style={styles.declineText}>Decline</Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity style={styles.declineButton} onPress={onDecline}>
-            <Text style={styles.declineText}>Decline</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
-            <Text style={styles.acceptText}>Accept</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[styles.acceptButton, (disabled || acceptDisabled) && styles.buttonBusy]}
+              onPress={onAccept}
+              disabled={disabled || acceptDisabled}
+            >
+              <Text style={styles.acceptText}>Accept</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -147,6 +214,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#34C759',
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  countdownPill: {
+    backgroundColor: '#F4F4F4',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  countdownPillUrgent: {
+    backgroundColor: '#FEF3F2',
+  },
+  countdownText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(0,0,0,0.5)',
+  },
+  countdownTextUrgent: {
+    color: '#B42318',
   },
   card: {
     backgroundColor: '#fff',
@@ -197,14 +285,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cylinderIconBox: {
-    width: 32,
-    height: 32,
-  },
-  cylinderImage: {
-    width: 10,
-    height: 16,
-  },
   detailLabel: {
     fontSize: 12,
     color: 'rgba(0,0,0,0.5)',
@@ -233,6 +313,9 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  buttonBusy: {
+    opacity: 0.5,
   },
   flagButton: {
     width: 44,

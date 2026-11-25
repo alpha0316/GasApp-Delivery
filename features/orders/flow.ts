@@ -7,6 +7,16 @@ export const ACTIVE_STATUSES: OrderStatus[] = ['rider_assigned', 'picked_up', 'f
 
 export const isActiveStatus = (status: OrderStatus) => ACTIVE_STATUSES.includes(status);
 
+export type HistoryBucket = 'pending' | 'ongoing' | 'completed';
+
+// Groups an order for the order-history list: accepted but not yet started,
+// actively being worked, or finished (delivered, cancelled or refunded).
+export function historyBucket(status: OrderStatus): HistoryBucket {
+  if (status === 'rider_assigned') return 'pending';
+  if (status === 'picked_up' || status === 'filling' || status === 'en_route_to_customer') return 'ongoing';
+  return 'completed';
+}
+
 export type Phase = 'toUserPickup' | 'toStation' | 'toUserDropoff';
 
 // rider_assigned: rider goes to the customer to collect the empty cylinder.
@@ -48,4 +58,11 @@ export async function advanceThrough(
     }
   }
   return latest;
+}
+
+// A one-order-at-a-time rider (motorbike) works the order already under way;
+// anything else they hold is queued behind it. With none under way, the first
+// active order (the server's order) is next.
+export function currentSingleOrder<T extends Pick<ApiOrder, 'status'>>(activeOrders: T[]): T | undefined {
+  return activeOrders.find((o) => o.status !== 'rider_assigned') ?? activeOrders[0];
 }

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
+import TestBuildNote from '../../../components/dev/TestBuildNote';
 import { errorMessage } from '../../../lib/api/client';
 import { requestOtp } from '../api';
 
@@ -12,6 +14,10 @@ export default function PhoneNumberScreen() {
   const [sending, setSending] = useState(false);
 
   const isButtonDisabled = phoneNumber.length < 10 || sending;
+
+  const handleChangePhoneNumber = (text: string) => {
+    setPhoneNumber(text.replace(/\D/g, '').slice(0, 10));
+  };
 
   const handleRequestOtp = async () => {
     if (phoneNumber.length < 10) {
@@ -30,7 +36,7 @@ export default function PhoneNumberScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <BackButton />
       </View>
@@ -51,7 +57,7 @@ export default function PhoneNumberScreen() {
             },
           ]}
           value={phoneNumber}
-          onChangeText={setPhoneNumber}
+          onChangeText={handleChangePhoneNumber}
           keyboardType="numeric"
           autoCapitalize="none"
           placeholder="Enter your phone number"
@@ -60,6 +66,7 @@ export default function PhoneNumberScreen() {
           maxLength={10}
           accessibilityLabel="Phone Number"
         />
+        <TestBuildNote text="Test build: enter any 10-digit number. No SMS is sent." />
         <PrimaryButton title="Sign In" disabled={isButtonDisabled} onPress={handleRequestOtp} />
         <View>
           <Text style={{ fontSize: 16, color: 'rgba(0,0,0,0.6)', textAlign: 'center' }}>
@@ -67,7 +74,7 @@ export default function PhoneNumberScreen() {
           </Text>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -83,7 +90,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
+    marginBottom: 16,
   },
   input: {
     height: 50,

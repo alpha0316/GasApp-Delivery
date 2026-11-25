@@ -6,6 +6,7 @@ import { formatMinor } from '../lib/format/money';
 const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; label: string }> = {
   delivered: { bg: '#ECFDF3', border: '#ABEFC6', text: '#067647', label: 'Delivered' },
   up_next: { bg: '#EFF8FF', border: '#B2DDFF', text: '#175CD3', label: 'Up Next' },
+  collected: { bg: '#FFF4EA', border: '#FFD6AE', text: '#B54708', label: 'Collected' },
   filled: { bg: '#EFF8FF', border: '#B2DDFF', text: '#175CD3', label: 'Filled' },
   queued: { bg: '#F4F4F4', border: 'rgba(0,0,0,0.1)', text: 'rgba(0,0,0,0.5)', label: 'Queued' },
   flagged: { bg: '#FEF3F2', border: '#FECDCA', text: '#B42318', label: 'Needs Changes' },
@@ -38,7 +39,7 @@ export default function OrderQueueRow({ index, order, variant }: OrderQueueRowPr
       {variant === 'price' ? (
         <View style={styles.priceCol}>
           <Text style={styles.price}>¢ {formatMinor(order.amount)}</Text>
-          <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
+          <Text style={styles.tip}>+ ₵ {formatMinor(order.estimatedEarnings)}</Text>
         </View>
       ) : (
         <View style={[styles.badge, { backgroundColor: badge.bg, borderColor: badge.border }]}>

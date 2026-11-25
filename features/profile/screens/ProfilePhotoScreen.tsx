@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { User, Camera, Image as ImageIcon } from 'phosphor-react-native';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
 import { errorMessage } from '../../../lib/api/client';
+import { MOCK_API, mockSetPhoto } from '../../../lib/api/devMock';
 import { nextRoute } from '../../auth/nextRoute';
 import { useAuthStore } from '../../auth/store';
 import { uploadProfilePhoto } from '../uploadPhoto';
@@ -17,6 +18,8 @@ interface PickedPhoto {
 
 export default function ProfilePhotoScreen() {
   const router = useRouter();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const editing = mode === 'edit';
   const setUser = useAuthStore((s) => s.setUser);
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
   const [saving, setSaving] = useState(false);
@@ -62,12 +65,20 @@ export default function ProfilePhotoScreen() {
     try {
       const rider = await uploadProfilePhoto(photo.uri, photo.mimeType);
       setUser(rider);
-      router.replace(nextRoute(rider));
+      if (editing) router.back();
+      else router.replace(nextRoute(rider));
     } catch (error) {
       Alert.alert('Error', errorMessage(error));
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDevSkip = () => {
+    const rider = mockSetPhoto();
+    setUser(rider);
+    if (editing) router.back();
+      else router.replace(nextRoute(rider));
   };
 
   return (
@@ -78,7 +89,7 @@ export default function ProfilePhotoScreen() {
 
       <View style={styles.content}>
         <View style={styles.titleGroup}>
-          <Text style={styles.title}>Add a profile photo</Text>
+          <Text style={styles.title}>{editing ? 'Change your profile photo' : 'Add a profile photo'}</Text>
           <Text style={styles.subtitle}>Customers see this when you arrive to pick up or deliver.</Text>
         </View>
 
@@ -104,11 +115,13 @@ export default function ProfilePhotoScreen() {
         </View>
 
         <PrimaryButton
-          title={saving ? 'Saving...' : 'Continue'}
+          title={saving ? 'Saving...' : editing ? 'Save' : 'Continue'}
           disabled={isButtonDisabled}
           onPress={handleContinue}
           style={styles.continueButton}
         />
+
+        {MOCK_API && <PrimaryButton title="Skip photo (dev)" onPress={handleDevSkip} style={styles.devSkip} />}
       </View>
     </View>
   );
@@ -183,5 +196,9 @@ const styles = StyleSheet.create({
   },
   continueButton: {
     marginTop: 16,
+  },
+  devSkip: {
+    marginTop: 12,
+    backgroundColor: '#0A84FF',
   },
 });

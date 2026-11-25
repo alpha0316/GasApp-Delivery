@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SealCheckDuotoneIcon } from './icons/OrderCardIcons';
+import ModalCloseButton from './ModalCloseButton';
 import { RiderStats } from '../types/order';
 import { formatMinor } from '../lib/format/money';
 
@@ -22,9 +23,10 @@ export default function DeliveryCompleteModal({
   onDismiss,
 }: DeliveryCompleteModalProps) {
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onDismiss}>
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
+          <ModalCloseButton onPress={onDismiss} />
           <SealCheckDuotoneIcon />
 
           <View style={styles.titleGroup}>

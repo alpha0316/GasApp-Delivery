@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
+import TestBuildNote from '../../../components/dev/TestBuildNote';
 import { errorMessage } from '../../../lib/api/client';
 import { requestOtp, verifyOtp } from '../api';
 import { nextRoute } from '../nextRoute';
@@ -18,6 +20,10 @@ export default function OtpScreen() {
   const [verifying, setVerifying] = useState(false);
 
   const isButtonDisabled = otp.length < OTP_LENGTH || verifying;
+
+  const handleChangeOtp = (text: string) => {
+    setOtp(text.replace(/\D/g, '').slice(0, OTP_LENGTH));
+  };
 
   const handleContinue = async () => {
     setVerifying(true);
@@ -46,7 +52,7 @@ export default function OtpScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <BackButton />
         <Text style={styles.headerTitle}>OTP Verification</Text>
@@ -57,13 +63,14 @@ export default function OtpScreen() {
       <TextInput
         style={styles.input}
         value={otp}
-        onChangeText={setOtp}
+        onChangeText={handleChangeOtp}
         maxLength={OTP_LENGTH}
         keyboardType="numeric"
         placeholderTextColor="rgba(0, 0, 0, 0.1)"
         accessibilityLabel="Enter OTP Code"
       />
 
+      <TestBuildNote text="Test build: any 6-digit code works, e.g. 123456. After signing in, tap the purple button (top right) to switch test scenarios." />
       <PrimaryButton title="Verify" disabled={isButtonDisabled} onPress={handleContinue} />
 
       <View style={styles.resendContainer}>
@@ -72,7 +79,7 @@ export default function OtpScreen() {
           <Text style={styles.resendLink}>Resend</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -95,7 +102,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
+    marginBottom: 16,
   },
   headerTitle: {
     fontSize: 20,

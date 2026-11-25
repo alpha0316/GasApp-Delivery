@@ -1,4 +1,11 @@
 import { API_URL } from '../config';
+import { mockApi, MOCK_API } from './devMock';
+
+// TEMP: the OTP screen's dev bypass signs in with this fake token so onboarding
+// screens can be explored without a real backend session. A 401 for it is
+// expected (the backend doesn't know it) and must not force a sign-out.
+// Remove alongside the bypass in features/auth/screens/OtpScreen.tsx.
+const DEV_BYPASS_TOKEN = 'dev-token';
 
 export class ApiError extends Error {
   constructor(
@@ -36,6 +43,8 @@ interface RequestOptions {
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, query, headers, token } = options;
 
+  if (MOCK_API) return mockApi<T>(path, method, body, query);
+
   const search = query
     ? Object.entries(query)
         .filter((entry): entry is [string, string | number] => entry[1] !== undefined)
@@ -67,7 +76,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   if (!response.ok) {
     const error = payload?.error;
-    if (response.status === 401 && authToken && token === undefined) onUnauthorized();
+    if (response.status === 401 && authToken && authToken !== DEV_BYPASS_TOKEN && token === undefined) onUnauthorized();
     throw new ApiError(
       response.status,
       error?.code ?? 'UNKNOWN',

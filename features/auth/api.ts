@@ -12,8 +12,8 @@ export const verifyOtp = (phone: string, code: string) =>
 
 export const fetchMe = () => api<{ user: User }>('/me');
 
-export const updateName = (firstName: string, lastName: string) =>
-  api<{ user: User }>('/me', { method: 'PATCH', body: { firstName, lastName } });
+export const updateName = (firstName: string, lastName: string, email?: string) =>
+  api<{ user: User }>('/me', { method: 'PATCH', body: { firstName, lastName, ...(email ? { email } : {}) } });
 
 export const registerPushToken = (token: string) => api<void>('/me/push-token', { method: 'POST', body: { token } });
 

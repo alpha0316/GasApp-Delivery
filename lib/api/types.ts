@@ -2,7 +2,7 @@
 export type Role = 'customer' | 'rider' | 'admin';
 export type CylinderSize = 'small' | 'medium' | 'large';
 export type PaymentMethod = 'paystack' | 'cash';
-export type VehicleType = 'motorbike' | 'tricycle' | 'car' | 'bicycle';
+export type VehicleType = 'motorbike' | 'tricycle' | 'car' | 'truck' | 'bicycle';
 export type RiderStatus = 'offline' | 'available' | 'on_delivery';
 
 export type OrderStatus =
@@ -39,9 +39,21 @@ export interface User {
   plateNumber?: string;
   photoUrl?: string;
   areaId?: string;
+  cylinderCapacity?: number;
   maxConcurrentOrders?: number;
   activeOrderCount: number;
   rating: number | null;
+  // Minor units (pesewas). The float that guarantees GasApp's commission on
+  // cash orders: see lib/pricing/feeSchedule.ts.
+  walletBalance?: number;
+  // Sum of platform fees reserved against accepted, not-yet-delivered cash orders.
+  walletLocked?: number;
+  // Unexcused-cancellation strikes within the last 7 days (section 3.3).
+  strikes?: number;
+  // ISO timestamps of those strikes, for the rolling 7-day window.
+  strikeHistory?: string[];
+  // True once 3 unexcused cancellations land within 7 days: cannot go online until an admin resolves it.
+  suspended?: boolean;
 }
 
 export interface Area {
@@ -76,6 +88,16 @@ export interface CustomerContact {
   phoneNumber?: string;
 }
 
+// One cylinder in an order: its size and how much gas the customer wants in it.
+// PROPOSED backend field (not in the API yet): until the backend sends
+// `cylinders`, the app splits the order evenly from cylinderSize/cylinderCount.
+export interface ApiCylinder {
+  size: CylinderSize;
+  // Gas to fill, minor units (pesewas).
+  fillAmount: number;
+  isFullFill?: boolean;
+}
+
 export interface ApiOrder {
   id: string;
   // Populated with contact fields on GET /rider/orders. A plain id in the pool list.
@@ -83,6 +105,8 @@ export interface ApiOrder {
   cylinderSize: CylinderSize;
   cylinderCount: number;
   isFullFill: boolean;
+  // Per-cylinder sizes and fill amounts, when one order mixes sizes or amounts.
+  cylinders?: ApiCylinder[];
   deliveryAddress: { label: string; lat: number; lng: number };
   riderInstructions: string;
   stationId: string;
@@ -96,6 +120,9 @@ export interface ApiOrder {
   deliveredAt?: string;
   // Rider order payloads only: true when the payment status is cash_collected.
   cashCollected?: boolean;
+  // True while this cash order's platform fee is reserved from the rider's
+  // wallet (locked on accept, released on cancel, deducted on delivery).
+  platformFeeLocked?: boolean;
   // Pool list only
   pickupDistanceKm?: number;
   estimatedEarnings?: number;

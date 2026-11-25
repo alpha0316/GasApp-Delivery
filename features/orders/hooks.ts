@@ -5,7 +5,16 @@ import { useAuthStore } from '../auth/store';
 import { flaggedIdsFrom } from '../delivery/batch';
 import { earningsKey } from '../earnings/hooks';
 import { profileKey } from '../profile/hooks';
-import { fetchOrderIssues, fetchRiderOrders, fetchStations, patchOrderStatus, postCashCollected, postOrderIssue } from './api';
+import type { CancelReason } from '../../lib/orders/cancelReasons';
+import {
+  cancelOrder,
+  fetchOrderIssues,
+  fetchRiderOrders,
+  fetchStations,
+  patchOrderStatus,
+  postCashCollected,
+  postOrderIssue,
+} from './api';
 import { advanceThrough, isActiveStatus, needsCashCall } from './flow';
 
 export const ordersKey = ['rider', 'orders'] as const;
@@ -40,7 +49,7 @@ export function useStations() {
   });
 }
 
-function useRefreshAfterOrderChange() {
+export function useRefreshAfterOrderChange() {
   const queryClient = useQueryClient();
   return () => {
     void queryClient.invalidateQueries({ queryKey: ordersKey });
@@ -68,6 +77,18 @@ export function useCompleteDelivery() {
       if (needsCashCall(order)) await postCashCollected(order.id);
       return (await patchOrderStatus(order.id, 'delivered')).order;
     },
+    onSettled: refresh,
+  });
+}
+
+// Cancelling before pickup releases a cash order's locked platform fee, and
+// an unexcused reason records a strike - both land on the rider record.
+export function useCancelOrder() {
+  const setUser = useAuthStore((s) => s.setUser);
+  const refresh = useRefreshAfterOrderChange();
+  return useMutation({
+    mutationFn: ({ orderId, reason }: { orderId: string; reason: CancelReason }) => cancelOrder(orderId, reason),
+    onSuccess: ({ rider }) => setUser(rider),
     onSettled: refresh,
   });
 }
