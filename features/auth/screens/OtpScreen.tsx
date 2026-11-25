@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
+import TestBuildNote from '../../../components/dev/TestBuildNote';
 import { errorMessage } from '../../../lib/api/client';
 import { requestOtp, verifyOtp } from '../api';
 import { nextRoute } from '../nextRoute';
@@ -69,6 +70,7 @@ export default function OtpScreen() {
         accessibilityLabel="Enter OTP Code"
       />
 
+      <TestBuildNote text="Test build: any 6-digit code works, e.g. 123456. After signing in, tap the purple button (top right) to switch test scenarios." />
       <PrimaryButton title="Verify" disabled={isButtonDisabled} onPress={handleContinue} />
 
       <View style={styles.resendContainer}>

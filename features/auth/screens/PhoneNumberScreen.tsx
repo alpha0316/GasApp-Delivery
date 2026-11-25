@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import PrimaryButton from '../../../components/PrimaryButton';
 import BackButton from '../../../components/BackButton';
+import TestBuildNote from '../../../components/dev/TestBuildNote';
 import { errorMessage } from '../../../lib/api/client';
 import { requestOtp } from '../api';
 
@@ -65,6 +66,7 @@ export default function PhoneNumberScreen() {
           maxLength={10}
           accessibilityLabel="Phone Number"
         />
+        <TestBuildNote text="Test build: enter any 10-digit number. No SMS is sent." />
         <PrimaryButton title="Sign In" disabled={isButtonDisabled} onPress={handleRequestOtp} />
         <View>
           <Text style={{ fontSize: 16, color: 'rgba(0,0,0,0.6)', textAlign: 'center' }}>
