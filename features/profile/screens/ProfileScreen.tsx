@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
@@ -16,17 +16,12 @@ import {
   type Icon,
 } from 'phosphor-react-native';
 import { formatMinor } from '../../../lib/format/money';
-import type { VehicleType } from '../../../lib/api/types';
+import RateAppSheet from '../../settings/screens/RateAppSheet';
+import { VEHICLES } from '../../../lib/vehicles';
 import { useAuthStore } from '../../auth/store';
 import { useEarnings } from '../../earnings/hooks';
 import { useAreas, useProfile } from '../hooks';
 
-const VEHICLE_LABELS: Record<VehicleType, string> = {
-  motorbike: 'Motorbike',
-  tricycle: 'Tricycle',
-  car: 'Car',
-  bicycle: 'Bicycle',
-};
 
 interface MenuItem {
   key: string;
@@ -37,8 +32,6 @@ interface MenuItem {
   onPress: () => void;
 }
 
-const comingSoon = (label: string) => () => Alert.alert(label, 'This will be available soon.');
-
 export default function ProfileScreen() {
   const router = useRouter();
   const storedUser = useAuthStore((s) => s.user);
@@ -46,6 +39,7 @@ export default function ProfileScreen() {
   const profile = useProfile();
   const earnings = useEarnings();
   const areas = useAreas();
+  const [rateAppOpen, setRateAppOpen] = useState(false);
 
   const rider = profile.data?.rider ?? storedUser;
   const totals = earnings.data;
@@ -53,7 +47,7 @@ export default function ProfileScreen() {
   const initial = fullName.charAt(0).toUpperCase();
   const rating = rider?.rating ?? totals?.rating ?? null;
   const areaName = areas.data?.areas.find((a) => a.id === rider?.areaId)?.name;
-  const vehicleSummary = [rider?.vehicleType && VEHICLE_LABELS[rider.vehicleType], rider?.plateNumber]
+  const vehicleSummary = [rider?.vehicleType && VEHICLES[rider.vehicleType].label, rider?.plateNumber]
     .filter(Boolean)
     .join(' · ');
 
@@ -75,7 +69,7 @@ export default function ProfileScreen() {
           label: 'Personal Information',
           Icon: UserIcon,
           color: '#7E3AA8',
-          onPress: go({ pathname: '/name', params: { mode: 'edit' } }),
+          onPress: go('/personal-info'),
         },
         {
           key: 'photo',
@@ -105,10 +99,10 @@ export default function ProfileScreen() {
     {
       title: 'Help & Preferences',
       items: [
-        { key: 'notif', label: 'Notification', Icon: Bell, color: '#E8912D', onPress: comingSoon('Notification') },
-        { key: 'help', label: 'Help & Support', Icon: Headset, color: '#3E9E4A', onPress: comingSoon('Help & Support') },
-        { key: 'rate', label: 'Rate GasApp', Icon: Star, color: '#E3B53A', onPress: comingSoon('Rate GasApp') },
-        { key: 'terms', label: 'Terms & Privacy', Icon: FileText, color: '#3A8A9A', onPress: comingSoon('Terms & Privacy') },
+        { key: 'notif', label: 'Notification', Icon: Bell, color: '#E8912D', onPress: go('/notification-settings') },
+        { key: 'help', label: 'Help & Support', Icon: Headset, color: '#3E9E4A', onPress: go('/support') },
+        { key: 'rate', label: 'Rate GasApp', Icon: Star, color: '#E3B53A', onPress: () => setRateAppOpen(true) },
+        { key: 'terms', label: 'Terms & Privacy', Icon: FileText, color: '#3A8A9A', onPress: go('/terms-privacy') },
       ],
     },
   ];
@@ -202,6 +196,15 @@ export default function ProfileScreen() {
           <Text style={[styles.rowLabel, styles.signOutText]}>Sign out</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <RateAppSheet
+        visible={rateAppOpen}
+        onClose={() => setRateAppOpen(false)}
+        onAddEmail={() => {
+          setRateAppOpen(false);
+          router.push('/personal-info');
+        }}
+      />
     </SafeAreaView>
   );
 }

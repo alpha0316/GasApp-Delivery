@@ -7,7 +7,7 @@ import { formatMinor } from '../lib/format/money';
 import Svg, { Path } from 'react-native-svg';
 
 // The card also shows a batch, so it needs only these fields.
-export type TrackingCardOrder = Pick<Order, 'customerName' | 'customerPhone' | 'cylinderSize' | 'amount' | 'tip' | 'etaMinutes'>;
+export type TrackingCardOrder = Pick<Order, 'customerName' | 'customerPhone' | 'cylinderSize' | 'amount' | 'earnings' | 'etaMinutes'>;
 
 interface TrackingOrderCardProps {
   order: TrackingCardOrder;
@@ -36,7 +36,7 @@ export default function TrackingOrderCard({
           <Text style={styles.phone}>{order.customerPhone}</Text>
         </TouchableOpacity>
         <View style={styles.headerRight}>
-          <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
+          <Text style={styles.tip}>+ ₵ {formatMinor(order.earnings)}</Text>
           {onReportIssue && (
             <TouchableOpacity style={styles.issueButton} onPress={onReportIssue}>
               <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">

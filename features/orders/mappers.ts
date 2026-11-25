@@ -1,5 +1,5 @@
 import type { ApiOrder, CylinderSize as ApiCylinderSize, Station } from '../../lib/api/types';
-import type { CylinderSize, LatLng, Order, QueueOrder, RecentOrder } from '../../types/order';
+import type { CylinderLine, CylinderSize, LatLng, Order, QueueOrder, RecentOrder } from '../../types/order';
 
 const SIZE_LABELS: Record<ApiCylinderSize, CylinderSize> = {
   small: 'Small',
@@ -27,6 +27,21 @@ function customerOf(order: ApiOrder) {
   return { name: name || 'Customer', phone: order.customerId.phoneNumber ?? '' };
 }
 
+// Every cylinder in an order, one line each. Uses the order's own per-cylinder
+// list when the backend sends one; otherwise splits gasTotal evenly across
+// cylinderCount cylinders of cylinderSize (any odd pesewa goes on the last).
+export function cylinderLines(order: Pick<ApiOrder, 'cylinders' | 'cylinderSize' | 'cylinderCount' | 'pricing'>): CylinderLine[] {
+  if (order.cylinders && order.cylinders.length > 0) {
+    return order.cylinders.map((c) => ({ size: toSizeLabel(c.size), amount: c.fillAmount }));
+  }
+  const count = Math.max(1, order.cylinderCount);
+  const each = Math.floor(order.pricing.gasTotal / count);
+  return Array.from({ length: count }, (_, i) => ({
+    size: toSizeLabel(order.cylinderSize),
+    amount: i === count - 1 ? order.pricing.gasTotal - each * (count - 1) : each,
+  }));
+}
+
 export function toOrderView(order: ApiOrder, stations: Station[] | undefined): Order {
   const station = stations?.find((s) => s.id === order.stationId);
   const customer = customerOf(order);
@@ -39,6 +54,7 @@ export function toOrderView(order: ApiOrder, stations: Station[] | undefined): O
     customerPhone: customer.phone,
     cylinderSize: toSizeLabel(order.cylinderSize),
     cylinderCount: order.cylinderCount,
+    cylinders: cylinderLines(order),
     amount: order.pricing.gasTotal,
     tip,
     total: order.pricing.total,
@@ -61,6 +77,7 @@ export function toQueueOrder(order: ApiOrder, status: QueueOrder['status'], stat
     area: order.deliveryAddress.label,
     cylinderSize: toSizeLabel(order.cylinderSize),
     amount: order.pricing.gasTotal,
+    cylinders: cylinderLines(order),
     tip: order.pricing.tip,
     estimatedEarnings: order.estimatedEarnings ?? (order.riderCommission ?? 0) + order.pricing.tip,
     customerLocation: customerLatLng(order),

@@ -29,7 +29,12 @@ export function useRoutePath(from: LatLng | null, to: LatLng | null) {
     [query.data]
   );
 
-  return { coordinates, error: query.error };
+  return {
+    coordinates,
+    distanceKm: query.data?.route.distanceKm ?? null,
+    durationSeconds: query.data?.route.durationSeconds ?? null,
+    error: query.error,
+  };
 }
 
 // 0-1 progress toward a target, from the distance when the leg started.

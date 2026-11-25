@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { showToast } from '../../../components/Toast';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -25,6 +26,7 @@ import { useProfile } from '../../profile/hooks';
 import CapacityRequestModal from '../components/CapacityRequestModal';
 import { useAcceptMany, useAcceptOrder, useDeclineOrder, usePool } from '../hooks';
 import { useOfferWindows } from '../useOfferWindows';
+import { useNotificationPrefs } from '../../settings/notificationSettings';
 
 // A batch is the rider's capacity: the pool orders in range, taken up to the
 // free slots, join the active queue.
@@ -69,6 +71,8 @@ export default function BatchOrderHomeScreen() {
   const offer = current ? pool.data?.[0] : undefined;
   const offerView = offer ? toOrderView(offer, stations.data) : null;
   const offerExpiresAt = useOfferWindows(offer ? [offer.id] : []);
+  // Profile -> Notification can turn off job pop-ups while on a delivery.
+  const jobPopups = useNotificationPrefs((s) => s.jobBanners);
   // Closing the popup just hides it; a fresh offer (different id) always
   // starts shown again.
   const [offerDismissed, setOfferDismissed] = useState(false);
@@ -83,6 +87,9 @@ export default function BatchOrderHomeScreen() {
       }
       const orderIds = [...activeOrders.map((o) => o.id), ...accepted];
       if (orderIds.length === 0) return;
+      if (accepted.length > 0) {
+        showToast(`${accepted.length} order${accepted.length === 1 ? '' : 's'} accepted`, { tone: 'success' });
+      }
       router.push({ pathname: '/tracking', params: { orderIds: orderIds.join(',') } });
     } finally {
       setStarting(false);
@@ -93,6 +100,7 @@ export default function BatchOrderHomeScreen() {
     if (!offer) return;
     try {
       await acceptOffer.mutateAsync(offer.id);
+      showToast('Order accepted', { tone: 'success', message: 'Added to your batch' });
     } catch (error) {
       Alert.alert('Error', orderAcceptErrorMessage(error));
     }
@@ -243,7 +251,7 @@ export default function BatchOrderHomeScreen() {
       )}
 
       <NewOrderRequestModal
-        visible={!!offerView && !offerDismissed}
+        visible={!!offerView && !offerDismissed && jobPopups}
         order={offerView}
         offerExpiresAt={offer ? offerExpiresAt(offer.id) : new Date().toISOString()}
         onAccept={handleAcceptOffer}

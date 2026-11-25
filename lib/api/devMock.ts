@@ -2,8 +2,10 @@ import * as SecureStore from 'expo-secure-store';
 import { isValidCancelReason, type CancelReason } from '../orders/cancelReasons';
 import { STRIKE_WINDOW_MS, SUSPENSION_STRIKE_THRESHOLD } from '../orders/strikes';
 import { deliveryFeeForDistanceKm, PLATFORM_FEE_BY_SIZE } from '../pricing/feeSchedule';
+import { mockRoadPath } from '../sim/mockRoute';
 import type {
   Area,
+  ApiCylinder,
   ApiOrder,
   CapacityRequest,
   CustomerContact,
@@ -36,10 +38,14 @@ export type MockScenario =
   | 'motorbike_incoming' // online, no active order, exactly 1 new pool order
   | 'motorbike_active' // 1 active order mid-delivery (heading to station), no new orders
   | 'motorbike_active_incoming' // active order + a new pool order interrupting it
-  // Tricycle / car: batch rider.
+  // Tricycle / car / truck: batch rider.
   | 'tricycle_queue' // no active batch yet, 2 pool orders sitting in the zone
-  | 'tricycle_batch_delivering' // batch in progress: 1 out for delivery, 2 still queued
-  | 'car_batch_full' // capacity maxed out: 4/4 active, all still pre-station
+  | 'tricycle_batch_delivering' // batch filled at the station: 3 cylinders to drop off
+  | 'car_queue' // no active batch yet, 3 pool orders sitting in the zone
+  | 'car_batch_full' // capacity maxed out: 4/4 active, mostly still to collect
+  | 'truck_queue' // no active batch yet, 5 pool orders sitting in the zone
+  | 'truck_batch_collecting' // mid-collection: 2 cylinders collected, 2 still to pick up
+  | 'truck_multi_station' // edge case: 5 orders whose customers picked 3 different stations (2 + 2 + 1)
   // Edge cases.
   | 'edge_suspended' // 3 strikes in 7 days: suspended, pool hidden
   | 'edge_near_suspension' // 2 strikes in the last day: reduced priority, not yet suspended
@@ -50,13 +56,14 @@ export type MockScenario =
 export const MOCK_SCENARIO: MockScenario = 'motorbike_incoming';
 
 // Mirrors features/pool/vehicleMode.ts's single-vs-batch split: a
-// motorbike/bicycle rider works one order at a time, a tricycle or car
-// rider works a batch queue of several.
+// motorbike/bicycle rider works one order at a time, a tricycle, car or
+// truck rider works a batch queue of several.
 const MAX_CONCURRENT_ORDERS: Record<VehicleType, number> = {
   motorbike: 1,
   bicycle: 1,
   tricycle: 3,
   car: 4,
+  truck: 6,
 };
 
 const AREAS: Area[] = [
@@ -101,6 +108,42 @@ function contact(id: string, firstName: string, lastName: string, phoneNumber: s
   return { id, firstName, lastName, phoneNumber };
 }
 
+const MOCK_CUSTOMERS: [string, string][] = [
+  ['Akua', 'Danso'],
+  ['Kwesi', 'Appiah'],
+  ['Efia', 'Owusu'],
+  ['Nii', 'Lartey'],
+  ['Adjoa', 'Boateng'],
+  ['Fiifi', 'Arthur'],
+  ['Maame', 'Asare'],
+  ['Selorm', 'Agbeko'],
+  ['Yaa', 'Asantewaa'],
+  ['Kojo', 'Mensah'],
+  ['Abla', 'Dzifa'],
+  ['Kwaku', 'Ofori'],
+];
+
+// A made-up customer for a pool order once it's accepted, so each pin on the
+// map has its own name instead of "New Customer". Skips names already on the
+// rider's active orders, so two pins never share a name.
+function mockCustomerFor(orderId: string): CustomerContact {
+  let hash = 0;
+  for (const char of orderId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  const inUse = new Set(
+    riderOrders
+      .filter((o) => o.status !== 'delivered' && o.status !== 'cancelled' && typeof o.customerId !== 'string')
+      .map((o) => (typeof o.customerId === 'string' ? '' : `${o.customerId.firstName} ${o.customerId.lastName}`))
+  );
+  const start = hash % MOCK_CUSTOMERS.length;
+  const pick =
+    Array.from({ length: MOCK_CUSTOMERS.length }, (_, i) => MOCK_CUSTOMERS[(start + i) % MOCK_CUSTOMERS.length]).find(
+      ([first, last]) => !inUse.has(`${first} ${last}`)
+    ) ?? MOCK_CUSTOMERS[start];
+  const [firstName, lastName] = pick;
+  const phone = `+23324${String(1000000 + (hash % 9000000)).slice(0, 7)}`;
+  return contact(`customer-${orderId}`, firstName, lastName, phone);
+}
+
 // A fully onboarded, approved rider of the given vehicle type, ready to land
 // straight on the home screen without going through onboarding.
 function onboardedRider(overrides: Partial<User> & { vehicleType: VehicleType }): User {
@@ -133,6 +176,9 @@ interface OrderSeed {
   customer: string | CustomerContact;
   cylinderSize: CylinderSize;
   cylinderCount?: number;
+  // Mixed sizes/amounts in one order. Overrides cylinderSize/cylinderCount,
+  // and the gas total becomes the sum of the fill amounts.
+  cylinders?: ApiCylinder[];
   isFullFill?: boolean;
   deliveryAddress: { label: string; lat: number; lng: number };
   riderInstructions?: string;
@@ -150,19 +196,25 @@ interface OrderSeed {
 
 function buildOrder(seed: OrderSeed): ApiOrder {
   const accepted = typeof seed.customer !== 'string';
-  const gasTotal = GAS_PRICE_BY_SIZE[seed.cylinderSize] * (seed.cylinderCount ?? 1);
+  const gasTotal = seed.cylinders
+    ? seed.cylinders.reduce((sum, c) => sum + c.fillAmount, 0)
+    : GAS_PRICE_BY_SIZE[seed.cylinderSize] * (seed.cylinderCount ?? 1);
   const pricing = makePricing(
     gasTotal,
     deliveryFeeForDistanceKm(seed.distanceKm),
     PLATFORM_FEE_BY_SIZE[seed.cylinderSize],
     seed.tip ?? 0
   );
-  const earnings = Math.round(gasTotal * 0.3) + pricing.tip;
+  // The rider's commission is the delivery fee (product doc section 1.3); a tip
+  // is on top. riderCommission excludes the tip, estimatedEarnings includes it
+  // (see features/orders/mappers.ts's earnings).
+  const commission = pricing.distanceFee;
   return {
     id: seed.id,
     customerId: seed.customer,
-    cylinderSize: seed.cylinderSize,
-    cylinderCount: seed.cylinderCount ?? 1,
+    cylinderSize: seed.cylinders?.[0]?.size ?? seed.cylinderSize,
+    cylinderCount: seed.cylinders?.length ?? seed.cylinderCount ?? 1,
+    ...(seed.cylinders ? { cylinders: seed.cylinders } : {}),
     isFullFill: seed.isFullFill ?? true,
     deliveryAddress: seed.deliveryAddress,
     riderInstructions: seed.riderInstructions ?? '',
@@ -175,13 +227,16 @@ function buildOrder(seed: OrderSeed): ApiOrder {
     updatedAt: isoMinutesAgo(seed.updatedMinutesAgo ?? seed.createdMinutesAgo),
     ...(seed.deliveredMinutesAgo !== undefined ? { deliveredAt: isoMinutesAgo(seed.deliveredMinutesAgo) } : {}),
     ...(accepted
-      ? { riderCommission: earnings, cashCollected: seed.cashCollected, platformFeeLocked: seed.platformFeeLocked }
-      : { estimatedEarnings: earnings, pickupDistanceKm: seed.pickupDistanceKm ?? seed.distanceKm * 0.4 }),
+      ? { riderCommission: commission, cashCollected: seed.cashCollected, platformFeeLocked: seed.platformFeeLocked }
+      : { estimatedEarnings: commission + pricing.tip, pickupDistanceKm: seed.pickupDistanceKm ?? seed.distanceKm * 0.4 }),
   };
 }
 
 interface ScenarioData {
   rider: User;
+  // Where the simulated rider is parked when the scenario starts (mock mode
+  // has no real GPS - see features/location/simulator.ts).
+  riderStart?: { lat: number; lng: number };
   pool: ApiOrder[];
   orders: ApiOrder[];
   issues?: Record<string, OrderIssueReport[]>;
@@ -190,12 +245,14 @@ interface ScenarioData {
 const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
   motorbike_incoming: () => ({
     rider: onboardedRider({ vehicleType: 'motorbike' }),
+    riderStart: { lat: 5.6352, lng: -0.1702 },
     pool: [
       buildOrder({
         id: 'order-pool-1',
         status: 'awaiting_rider',
         customer: 'customer-pool-1',
         cylinderSize: 'medium',
+        cylinders: [{ size: 'small', fillAmount: 3000 }, { size: 'small', fillAmount: 5000 }],
         deliveryAddress: { label: 'East Legon, Accra', lat: 5.6494, lng: -0.1538 },
         riderInstructions: 'Call when you arrive at the gate.',
         stationId: 'station-spintex',
@@ -237,6 +294,8 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
 
   motorbike_active: () => ({
     rider: onboardedRider({ vehicleType: 'motorbike', activeOrderCount: 1, walletLocked: 1200 }),
+    // Just collected the empty cylinder from the customer.
+    riderStart: { lat: 5.6062, lng: -0.1705 },
     pool: [],
     orders: [
       buildOrder({
@@ -273,13 +332,15 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
 
   motorbike_active_incoming: () => ({
     rider: onboardedRider({ vehicleType: 'motorbike', activeOrderCount: 1 }),
+    // Just left the filling station with the full cylinder.
+    riderStart: { lat: 5.5655, lng: -0.1612 },
     pool: [
       buildOrder({
         id: 'order-pool-interrupt',
         status: 'awaiting_rider',
         customer: 'customer-pool-interrupt',
         cylinderSize: 'small',
-        deliveryAddress: { label: "Old Suame Rd, Adum", lat: 5.6494, lng: -0.1538 },
+        deliveryAddress: { label: 'Airport Hills, Accra', lat: 5.6128, lng: -0.1846 },
         stationId: 'station-osu',
         distanceKm: 2.6,
         paymentMethod: 'cash',
@@ -304,6 +365,7 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
 
   tricycle_queue: () => ({
     rider: onboardedRider({ vehicleType: 'tricycle' }),
+    riderStart: { lat: 5.6205, lng: -0.1752 },
     pool: [
       buildOrder({
         id: 'order-pool-1',
@@ -322,6 +384,7 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
         status: 'awaiting_rider',
         customer: 'customer-pool-2',
         cylinderSize: 'small',
+        cylinders: [{ size: 'small', fillAmount: 3000 }, { size: 'small', fillAmount: 5000 }, { size: 'medium', fillAmount: 7000 }],
         cylinderCount: 2,
         isFullFill: false,
         deliveryAddress: { label: 'Dzorwulu, Accra', lat: 5.5901, lng: -0.1931 },
@@ -337,6 +400,8 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
 
   tricycle_batch_delivering: () => ({
     rider: onboardedRider({ vehicleType: 'tricycle', activeOrderCount: 3, walletLocked: 1800 }),
+    // Every cylinder is collected and filled; just left the station.
+    riderStart: { lat: 5.5572, lng: -0.1752 },
     pool: [],
     orders: [
       buildOrder({
@@ -344,7 +409,7 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
         status: 'en_route_to_customer',
         customer: contact('customer-batch-1', 'Francis', 'Sam', '+233554144611'),
         cylinderSize: 'small',
-        deliveryAddress: { label: 'Ashaade Quaye St, Adum', lat: 6.6975, lng: -1.6285 },
+        deliveryAddress: { label: 'Labone, Accra', lat: 5.5665, lng: -0.172 },
         stationId: 'station-osu',
         distanceKm: 3.0,
         paymentMethod: 'cash',
@@ -355,35 +420,82 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
       }),
       buildOrder({
         id: 'order-batch-2',
-        status: 'picked_up',
+        status: 'en_route_to_customer',
         customer: contact('customer-batch-2', 'Abena', 'Osei', '+233552301174'),
         cylinderSize: 'medium',
-        deliveryAddress: { label: 'KNUST, Ayigya Ext.', lat: 6.6745, lng: -1.5716 },
-        stationId: 'station-spintex',
+        cylinders: [{ size: 'medium', fillAmount: 4500 }, { size: 'medium', fillAmount: 7000 }, { size: 'small', fillAmount: 2500 }],
+        deliveryAddress: { label: 'Cantonments, Accra', lat: 5.5784, lng: -0.1748 },
+        stationId: 'station-osu',
         distanceKm: 5.2,
         paymentMethod: 'paystack',
         tip: 1200,
         createdMinutesAgo: 35,
-        updatedMinutesAgo: 10,
+        updatedMinutesAgo: 4,
       }),
       buildOrder({
         id: 'order-batch-3',
-        status: 'rider_assigned',
+        status: 'en_route_to_customer',
         customer: contact('customer-batch-3', 'Kofi', 'Agyemang', '+233208794401'),
         cylinderSize: 'large',
-        deliveryAddress: { label: 'Suame Magazine Rd, Blk 7', lat: 6.7205, lng: -1.6324 },
-        stationId: 'station-labadi',
+        deliveryAddress: { label: 'Ridge, Accra', lat: 5.5636, lng: -0.1968 },
+        stationId: 'station-osu',
         distanceKm: 5.8,
         paymentMethod: 'cash',
         createdMinutesAgo: 20,
-        updatedMinutesAgo: 20,
+        updatedMinutesAgo: 4,
         platformFeeLocked: true,
       }),
     ],
   }),
 
+  car_queue: () => ({
+    rider: onboardedRider({ vehicleType: 'car' }),
+    riderStart: { lat: 5.6015, lng: -0.1598 },
+    pool: [
+      buildOrder({
+        id: 'order-pool-car-1',
+        status: 'awaiting_rider',
+        customer: 'customer-pool-car-1',
+        cylinderSize: 'large',
+        deliveryAddress: { label: 'Airport Residential, Accra', lat: 5.605, lng: -0.1719 },
+        stationId: 'station-spintex',
+        distanceKm: 3.4,
+        paymentMethod: 'paystack',
+        tip: 700,
+        createdMinutesAgo: 2,
+      }),
+      buildOrder({
+        id: 'order-pool-car-2',
+        status: 'awaiting_rider',
+        customer: 'customer-pool-car-2',
+        cylinderSize: 'medium',
+        cylinders: [{ size: 'medium', fillAmount: 4500 }, { size: 'small', fillAmount: 3000 }],
+        cylinderCount: 2,
+        deliveryAddress: { label: 'Shiashie, Accra', lat: 5.6205, lng: -0.1622 },
+        riderInstructions: 'Yellow house behind the pharmacy.',
+        stationId: 'station-spintex',
+        distanceKm: 2.1,
+        paymentMethod: 'cash',
+        createdMinutesAgo: 5,
+      }),
+      buildOrder({
+        id: 'order-pool-car-3',
+        status: 'awaiting_rider',
+        customer: 'customer-pool-car-3',
+        cylinderSize: 'small',
+        deliveryAddress: { label: 'Baatsona, Accra', lat: 5.6312, lng: -0.1405 },
+        stationId: 'station-spintex',
+        distanceKm: 1.6,
+        paymentMethod: 'paystack',
+        createdMinutesAgo: 9,
+      }),
+    ],
+    orders: [],
+  }),
+
   car_batch_full: () => ({
     rider: onboardedRider({ vehicleType: 'car', activeOrderCount: 4, walletLocked: 2400 }),
+    riderStart: { lat: 5.6152, lng: -0.1318 },
     pool: [],
     orders: [
       buildOrder({
@@ -427,6 +539,7 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
         status: 'rider_assigned',
         customer: contact('customer-full-4', 'Efua', 'Asante', '+233501119988'),
         cylinderSize: 'large',
+        cylinders: [{ size: 'large', fillAmount: 6000 }, { size: 'medium', fillAmount: 4500 }],
         cylinderCount: 2,
         isFullFill: false,
         deliveryAddress: { label: 'Cantonments, Accra', lat: 5.5724, lng: -0.1667 },
@@ -438,6 +551,129 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
     ],
   }),
 
+  truck_queue: () => ({
+    rider: onboardedRider({ vehicleType: 'truck', cylinderCapacity: 20 }),
+    riderStart: { lat: 5.6268, lng: -0.1102 },
+    pool: [
+      ['order-pool-truck-1', 'Sakumono, Tema', 5.6232, -0.0842, 'large', 3, 'cash'],
+      ['order-pool-truck-2', 'Community 18, Spintex', 5.6402, -0.1085, 'medium', 2, 'paystack'],
+      ['order-pool-truck-3', 'Lashibi, Accra', 5.6338, -0.0964, 'small', 4, 'paystack'],
+      ['order-pool-truck-4', 'Nungua, Accra', 5.6012, -0.0786, 'large', 2, 'cash'],
+      ['order-pool-truck-5', 'Batsonaa, Spintex', 5.6326, -0.1362, 'medium', 1, 'paystack'],
+    ].map(([id, label, lat, lng, size, count, payment], index) =>
+      buildOrder({
+        id: id as string,
+        status: 'awaiting_rider',
+        customer: `customer-${id}`,
+        cylinderSize: size as CylinderSize,
+        cylinderCount: count as number,
+        deliveryAddress: { label: label as string, lat: lat as number, lng: lng as number },
+        stationId: 'station-spintex',
+        distanceKm: 2 + index * 0.8,
+        paymentMethod: payment as PaymentMethod,
+        tip: index % 2 === 0 ? 500 : 0,
+        createdMinutesAgo: 2 + index * 3,
+      })
+    ),
+    orders: [],
+  }),
+
+  truck_batch_collecting: () => ({
+    rider: onboardedRider({ vehicleType: 'truck', activeOrderCount: 4, walletLocked: 2400, cylinderCapacity: 20 }),
+    // Parked at the second customer, who just handed over their cylinders.
+    riderStart: { lat: 5.6402, lng: -0.1085 },
+    pool: [],
+    orders: [
+      buildOrder({
+        id: 'order-truck-1',
+        status: 'picked_up',
+        customer: contact('customer-truck-1', 'Esi', 'Quaye', '+233245550101'),
+        cylinderSize: 'large',
+        cylinderCount: 3,
+        deliveryAddress: { label: 'Sakumono, Tema', lat: 5.6232, lng: -0.0842 },
+        stationId: 'station-spintex',
+        distanceKm: 6.1,
+        paymentMethod: 'cash',
+        createdMinutesAgo: 30,
+        updatedMinutesAgo: 12,
+        platformFeeLocked: true,
+      }),
+      buildOrder({
+        id: 'order-truck-2',
+        status: 'picked_up',
+        customer: contact('customer-truck-2', 'Kojo', 'Antwi', '+233205550202'),
+        cylinderSize: 'medium',
+        cylinderCount: 2,
+        deliveryAddress: { label: 'Community 18, Spintex', lat: 5.6402, lng: -0.1085 },
+        stationId: 'station-spintex',
+        distanceKm: 3.2,
+        paymentMethod: 'paystack',
+        tip: 500,
+        createdMinutesAgo: 28,
+        updatedMinutesAgo: 1,
+      }),
+      buildOrder({
+        id: 'order-truck-3',
+        status: 'rider_assigned',
+        customer: contact('customer-truck-3', 'Adwoa', 'Mensah', '+233275550303'),
+        cylinderSize: 'small',
+        cylinders: [{ size: 'small', fillAmount: 3000 }, { size: 'small', fillAmount: 3000 }, { size: 'small', fillAmount: 2000 }, { size: 'small', fillAmount: 5000 }],
+        cylinderCount: 4,
+        deliveryAddress: { label: 'Lashibi, Accra', lat: 5.6338, lng: -0.0964 },
+        stationId: 'station-spintex',
+        distanceKm: 4.4,
+        paymentMethod: 'paystack',
+        createdMinutesAgo: 25,
+      }),
+      buildOrder({
+        id: 'order-truck-4',
+        status: 'rider_assigned',
+        customer: contact('customer-truck-4', 'Yaw', 'Boadu', '+233545550404'),
+        cylinderSize: 'large',
+        cylinderCount: 2,
+        deliveryAddress: { label: 'Nungua, Accra', lat: 5.6012, lng: -0.0786 },
+        stationId: 'station-spintex',
+        distanceKm: 7.0,
+        paymentMethod: 'cash',
+        createdMinutesAgo: 22,
+        platformFeeLocked: true,
+      }),
+    ],
+  }),
+
+  // Edge case: customers chose their own stations (e.g. the one nearest them),
+  // so one batch fills at three. Batch order puts the stations in visiting
+  // order Spintex -> Labadi -> Osu.
+  truck_multi_station: () => ({
+    rider: onboardedRider({ vehicleType: 'truck', activeOrderCount: 5, walletLocked: 1700, cylinderCapacity: 20 }),
+    riderStart: { lat: 5.6152, lng: -0.1318 },
+    pool: [],
+    orders: (
+      [
+        ['order-ms-1', 'Kofi', 'Badu', 'Baatsona, Accra', 5.6312, -0.1405, 'station-spintex', 'medium', 'cash'],
+        ['order-ms-2', 'Akosua', 'Nyarko', 'La, Accra', 5.565, -0.148, 'station-labadi', 'small', 'paystack'],
+        ['order-ms-3', 'Yaw', 'Addo', 'Community 6, Tema Rd', 5.626, -0.132, 'station-spintex', 'large', 'paystack'],
+        ['order-ms-4', 'Esi', 'Ansah', 'Osu, Accra', 5.56, -0.183, 'station-osu', 'medium', 'cash'],
+        ['order-ms-5', 'Kwabena', 'Tetteh', 'Teshie, Accra', 5.5811, -0.1312, 'station-labadi', 'small', 'paystack'],
+      ] as const
+    ).map(([id, first, last, label, lat, lng, stationId, size, payment], index) =>
+      buildOrder({
+        id,
+        status: 'rider_assigned',
+        customer: contact(`customer-${id}`, first, last, `+23324${5550500 + index}`),
+        cylinderSize: size,
+        ...(index === 2 ? { cylinders: [{ size: 'large' as const, fillAmount: 6000 }, { size: 'small' as const, fillAmount: 3000 }] } : {}),
+        deliveryAddress: { label, lat, lng },
+        stationId,
+        distanceKm: 2.5 + index * 0.6,
+        paymentMethod: payment,
+        tip: index % 2 === 0 ? 500 : 0,
+        createdMinutesAgo: 18 - index * 3,
+        platformFeeLocked: payment === 'cash',
+      })
+    ),
+  }),
+
   edge_suspended: () => {
     const strikeHistory = [isoMinutesAgo(60 * 24 * 5), isoMinutesAgo(60 * 24 * 2), isoMinutesAgo(60 * 6)];
     return {
@@ -447,6 +683,7 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
         strikes: strikeHistory.length,
         strikeHistory,
       }),
+      riderStart: { lat: 5.5952, lng: -0.1848 },
       pool: [
         buildOrder({
           id: 'order-pool-1',
@@ -485,6 +722,7 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
         strikes: strikeHistory.length,
         strikeHistory,
       }),
+      riderStart: { lat: 5.5952, lng: -0.1848 },
       pool: [
         buildOrder({
           id: 'order-pool-1',
@@ -548,6 +786,7 @@ const SCENARIOS: Record<MockScenario, () => ScenarioData> = {
 
   edge_flagged_single: () => ({
     rider: onboardedRider({ vehicleType: 'motorbike', activeOrderCount: 1 }),
+    riderStart: { lat: 5.5572, lng: -0.1752 },
     pool: [],
     orders: [
       buildOrder({
@@ -589,6 +828,9 @@ function seedScenario(scenario: MockScenario): ScenarioData {
   return SCENARIOS[scenario]();
 }
 
+// Central Accra, for scenarios that don't pick their own start point.
+const DEFAULT_RIDER_START = { lat: 5.6098, lng: -0.1702 };
+
 // Kept separate from the scenarios above: a blank, un-onboarded rider, used
 // only to mirror the real sign-out boundary (see mockResetRider below).
 const BLANK_RIDER: User = {
@@ -619,7 +861,11 @@ export const MOCK_SCENARIO_LABELS: Record<MockScenario, string> = {
   motorbike_active_incoming: '🏍️ Motorbike · active + incoming',
   tricycle_queue: '🛺 Tricycle · orders queued',
   tricycle_batch_delivering: '🛺 Tricycle · batch delivering',
+  car_queue: '🚗 Car · orders queued',
   car_batch_full: '🚗 Car · batch full (4/4)',
+  truck_queue: '🚚 Truck · orders queued',
+  truck_batch_collecting: '🚚 Truck · collecting cylinders',
+  truck_multi_station: '🚚 Truck · 5 orders, 3 stations',
   edge_suspended: '⚠️ Edge · suspended',
   edge_near_suspension: '⚠️ Edge · near suspension',
   edge_low_wallet: '⚠️ Edge · wallet too low',
@@ -644,6 +890,7 @@ let rider: User = seed.rider;
 let poolOrders: ApiOrder[] = seed.pool;
 let riderOrders: ApiOrder[] = seed.orders;
 let orderIssues: Record<string, OrderIssueReport[]> = seed.issues ?? {};
+let riderStart = seed.riderStart ?? DEFAULT_RIDER_START;
 // Orders this rider referred back to the pool: other riders see them again,
 // but they're never offered back to the rider who passed them on.
 let referredAway = new Set<string>();
@@ -684,6 +931,11 @@ function setRider(next: User): User {
   return rider;
 }
 
+// Where the simulated rider starts in the live scenario.
+export function mockRiderStart(): { latitude: number; longitude: number } {
+  return { latitude: riderStart.lat, longitude: riderStart.lng };
+}
+
 export function mockCurrentScenario(): MockScenario {
   return activeScenario;
 }
@@ -699,11 +951,42 @@ export function mockSwitchScenario(scenario: MockScenario): User {
   poolOrders = data.pool;
   riderOrders = data.orders;
   orderIssues = data.issues ?? {};
+  riderStart = data.riderStart ?? DEFAULT_RIDER_START;
   referredAway = new Set();
   CAPACITY_REQUESTS.length = 0;
   void SecureStore.setItemAsync(MOCK_RIDER_KEY, JSON.stringify(rider)).catch(() => {});
   void SecureStore.setItemAsync(MOCK_SCENARIO_KEY, scenario).catch(() => {});
   return rider;
+}
+
+// Simulates a new customer ordering near the rider mid-delivery, so the
+// "incoming order joins your run" flow can be tried. Returns false when the
+// pool already has something waiting.
+let spawnCount = 0;
+export function mockSpawnIncomingOrder(near: { latitude: number; longitude: number }): boolean {
+  if (poolOrders.some((o) => !referredAway.has(o.id))) return false;
+  spawnCount += 1;
+  const sizes: CylinderSize[] = ['small', 'medium', 'large'];
+  // About 1 km away, in a different direction each time.
+  const angle = (spawnCount * 137 * Math.PI) / 180;
+  const order = buildOrder({
+    id: `order-incoming-${Date.now()}`,
+    status: 'awaiting_rider',
+    customer: `customer-incoming-${spawnCount}`,
+    cylinderSize: sizes[spawnCount % sizes.length],
+    deliveryAddress: {
+      label: ['Dzorwulu, Accra', 'Roman Ridge, Accra', 'Abelemkpe, Accra', 'Kotobabi, Accra'][spawnCount % 4],
+      lat: near.latitude + Math.sin(angle) * 0.009,
+      lng: near.longitude + Math.cos(angle) * 0.009,
+    },
+    stationId: 'station-spintex',
+    distanceKm: 2.4,
+    paymentMethod: spawnCount % 2 === 0 ? 'cash' : 'paystack',
+    tip: 300,
+    createdMinutesAgo: 0,
+  });
+  poolOrders = [order, ...poolOrders];
+  return true;
 }
 
 // Mirrors the real sign-out boundary: starts the next test run as a brand
@@ -899,8 +1182,8 @@ export async function mockApi<T>(
     const assigned: ApiOrder = {
       ...accepted,
       status: 'rider_assigned',
-      customerId: { id: `customer-${accepted.id}`, firstName: 'New', lastName: 'Customer', phoneNumber: '+233500000000' },
-      riderCommission: accepted.estimatedEarnings ?? Math.round(accepted.pricing.gasTotal * 0.3),
+      customerId: mockCustomerFor(accepted.id),
+      riderCommission: accepted.pricing.distanceFee,
       updatedAt: new Date().toISOString(),
       platformFeeLocked: isCash,
     };
@@ -1045,16 +1328,29 @@ export async function mockApi<T>(
   }
 
   if (match('/routing') && method === 'GET') {
+    const from = { latitude: Number(query?.fromLat), longitude: Number(query?.fromLng) };
+    const to = { latitude: Number(query?.toLat), longitude: Number(query?.toLng) };
+    const path = mockRoadPath(from, to);
+    let meters = 0;
+    for (let i = 1; i < path.length; i++) {
+      const dLat = (path[i].latitude - path[i - 1].latitude) * 111_000;
+      const dLng = (path[i].longitude - path[i - 1].longitude) * 111_000 * Math.cos((from.latitude * Math.PI) / 180);
+      meters += Math.hypot(dLat, dLng);
+    }
     return wait({
       route: {
-        distanceKm: 3,
-        durationSeconds: 600,
-        geometry: { type: 'LineString', coordinates: [] },
+        distanceKm: meters / 1000,
+        durationSeconds: Math.round(meters / 8),
+        geometry: { type: 'LineString', coordinates: path.map((p) => [p.longitude, p.latitude]) },
       },
     } as T);
   }
 
   if (match('/rider/location') && method === 'PATCH') {
+    return wait(undefined as T);
+  }
+
+  if (match('/contact') && method === 'POST') {
     return wait(undefined as T);
   }
 

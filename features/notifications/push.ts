@@ -3,14 +3,20 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { registerPushToken, removePushToken } from '../auth/api';
+import { notificationPrefs, useNotificationPrefs } from '../settings/notificationSettings';
 
+// Honours the rider's choices in Profile -> Notification.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async () => {
+    await useNotificationPrefs.getState().load();
+    const { phoneAlerts, sound } = notificationPrefs();
+    return {
+      shouldShowBanner: phoneAlerts,
+      shouldShowList: phoneAlerts,
+      shouldPlaySound: phoneAlerts && sound,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 let currentToken: string | null = null;

@@ -1,5 +1,5 @@
 import type { ApiOrder } from '../../lib/api/types';
-import { advanceThrough, historyBucket, needsCashCall, phaseOf, statusPath } from './flow';
+import { advanceThrough, currentSingleOrder, historyBucket, needsCashCall, phaseOf, statusPath } from './flow';
 
 describe('phaseOf', () => {
   it('maps each active status to a leg', () => {
@@ -68,5 +68,17 @@ describe('advanceThrough', () => {
   it('returns the last order when every step works', async () => {
     const result = await advanceThrough(start, 'filling', async (status) => ({ ...start, status }) as ApiOrder);
     expect(result.status).toBe('filling');
+  });
+});
+
+describe('currentSingleOrder', () => {
+  it('keeps working the order already under way, whatever was accepted since', () => {
+    const orders = [{ id: 'new', status: 'rider_assigned' as const }, { id: 'riding', status: 'picked_up' as const }];
+    expect(currentSingleOrder(orders)?.id).toBe('riding');
+  });
+
+  it('starts the first queued order when none is under way', () => {
+    const orders = [{ id: 'a', status: 'rider_assigned' as const }, { id: 'b', status: 'rider_assigned' as const }];
+    expect(currentSingleOrder(orders)?.id).toBe('a');
   });
 });

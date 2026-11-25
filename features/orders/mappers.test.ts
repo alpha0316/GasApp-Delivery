@@ -1,5 +1,5 @@
 import type { ApiOrder } from '../../lib/api/types';
-import { toOrderView, toRecentOrder } from './mappers';
+import { cylinderLines, toOrderView, toRecentOrder } from './mappers';
 
 const base: ApiOrder = {
   id: 'o1',
@@ -40,5 +40,33 @@ describe('toRecentOrder', () => {
     expect(toRecentOrder(base)).toBeNull();
     expect(toRecentOrder({ ...base, status: 'cancelled' })?.time).toBe('Cancelled');
     expect(toRecentOrder({ ...base, status: 'delivered', deliveredAt: '2026-11-05T09:12:00.000Z' })?.status).toBe('completed');
+  });
+});
+
+describe('cylinderLines', () => {
+  const pricing = { gasAmount: 0, gasTotal: 10001, distanceFee: 0, serviceFee: 0, tip: 0, total: 0, currency: 'GHS' };
+
+  it('lists each cylinder with its own amount when the order has a breakdown', () => {
+    const lines = cylinderLines({
+      cylinderSize: 'small',
+      cylinderCount: 2,
+      pricing,
+      cylinders: [
+        { size: 'small', fillAmount: 3000 },
+        { size: 'medium', fillAmount: 7000 },
+      ],
+    });
+    expect(lines).toEqual([
+      { size: 'Small', amount: 3000 },
+      { size: 'Medium', amount: 7000 },
+    ]);
+  });
+
+  it('splits the gas total evenly without one, keeping every pesewa', () => {
+    const lines = cylinderLines({ cylinderSize: 'small', cylinderCount: 2, pricing });
+    expect(lines).toEqual([
+      { size: 'Small', amount: 5000 },
+      { size: 'Small', amount: 5001 },
+    ]);
   });
 });

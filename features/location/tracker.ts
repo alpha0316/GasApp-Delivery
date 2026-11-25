@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import { errorMessage } from '../../lib/api/client';
+import { MOCK_API, mockRiderStart } from '../../lib/api/devMock';
 import { bearingBetween } from '../../utils/geo';
 import { sendLocation } from './api';
 import { LOCATION_TASK } from './backgroundTask';
@@ -35,6 +36,15 @@ export type StartResult = { ok: true; background: boolean } | { ok: false; reaso
 
 // Starts the foreground loop and, when permitted, the background updates.
 export async function startTracking(onPing?: () => void): Promise<StartResult> {
+  // Mock mode has no real GPS: park the rider at the scenario's start point
+  // and let features/location/simulator.ts move them during a delivery.
+  if (MOCK_API) {
+    const store = useLocationStore.getState();
+    if (!store.position) store.setPosition(mockRiderStart(), 0);
+    onPing?.();
+    return { ok: true, background: true };
+  }
+
   const foreground = await Location.requestForegroundPermissionsAsync();
   if (!foreground.granted) {
     return { ok: false, reason: 'Allow location access to receive orders.' };
@@ -74,6 +84,10 @@ export async function startTracking(onPing?: () => void): Promise<StartResult> {
 }
 
 export async function stopTracking(): Promise<void> {
+  if (MOCK_API) {
+    useLocationStore.getState().clear();
+    return;
+  }
   if (timer) {
     clearInterval(timer);
     timer = null;

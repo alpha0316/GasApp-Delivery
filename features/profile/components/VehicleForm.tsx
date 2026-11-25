@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  ImageSourcePropType,
   PanResponder,
   StyleSheet,
   Text,
@@ -14,19 +13,16 @@ import * as Location from 'expo-location';
 import { Minus, Plus } from 'phosphor-react-native';
 import { errorMessage } from '../../../lib/api/client';
 import type { Area, VehicleType } from '../../../lib/api/types';
+import { SELECTABLE_VEHICLES, VEHICLES } from '../../../lib/vehicles';
 import { distanceMeters } from '../../../utils/geo';
 import { useAreas } from '../hooks';
 
-const VEHICLES: { value: VehicleType; label: string; image: ImageSourcePropType }[] = [
-  { value: 'motorbike', label: 'Motorbike', image: require('../../../assets/images/order-card/bike-rider.png') },
-  { value: 'tricycle', label: 'Tricycle', image: require('../../../assets/images/vehicles/tricycle.png') },
-  { value: 'car', label: 'Car', image: require('../../../assets/images/vehicles/car.png') },
-];
 
 const MAX_CYLINDERS: Partial<Record<VehicleType, number>> = {
   motorbike: 2,
   tricycle: 10,
   car: 10,
+  truck: 30,
 };
 const DEFAULT_MAX_CYLINDERS = 10;
 const MIN_CYLINDERS = 1;
@@ -139,13 +135,14 @@ export default function VehicleForm({ value, onChange }: VehicleFormProps) {
     <View style={{ gap: 12 }}>
       <Text style={styles.label}>Select Your Vehicle Type</Text>
       <View style={styles.vehicleRow}>
-        {VEHICLES.map((vehicle) => {
-          const selected = vehicle.value === value.vehicleType;
+        {SELECTABLE_VEHICLES.map((type) => {
+          const vehicle = VEHICLES[type];
+          const selected = type === value.vehicleType;
           return (
             <TouchableOpacity
-              key={vehicle.value}
+              key={type}
               style={[styles.vehicleCard, selected && styles.vehicleCardSelected]}
-              onPress={() => handleSelectVehicle(vehicle.value)}
+              onPress={() => handleSelectVehicle(type)}
               accessibilityRole="button"
               accessibilityState={{ selected }}
             >
@@ -329,7 +326,7 @@ const styles = StyleSheet.create({
   },
   vehicleRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   vehicleCard: {
     flex: 1,
@@ -348,11 +345,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   vehicleImage: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
   },
   vehicleLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#000',
   },

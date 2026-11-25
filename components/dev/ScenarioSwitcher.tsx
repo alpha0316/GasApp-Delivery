@@ -8,10 +8,14 @@ import {
   MOCK_SCENARIOS,
   MOCK_SCENARIO_LABELS,
   mockCurrentScenario,
+  mockRiderStart,
   mockSwitchScenario,
   type MockScenario,
 } from '../../lib/api/devMock';
 import { useAuthStore } from '../../features/auth/store';
+import { stopDrive } from '../../features/location/simulator';
+import { useLocationStore } from '../../features/location/store';
+import { showToast } from '../Toast';
 import { queryClient } from '../../lib/query/queryClient';
 
 // Dev-only floating button for jumping between lib/api/devMock.ts's test
@@ -30,7 +34,11 @@ export default function ScenarioSwitcher() {
     const nextRider = mockSwitchScenario(scenario);
     setCurrent(scenario);
     setUser(nextRider);
+    // Park the simulated rider at the new scenario's start point.
+    stopDrive();
+    useLocationStore.getState().setPosition(mockRiderStart(), 0);
     void queryClient.invalidateQueries();
+    showToast('Scenario loaded', { message: MOCK_SCENARIO_LABELS[scenario] });
     setOpen(false);
     router.replace('/home');
   };

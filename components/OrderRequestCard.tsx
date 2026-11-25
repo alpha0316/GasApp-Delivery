@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Order } from '../types/order';
 import { formatMinor } from '../lib/format/money';
+import CylinderList from './CylinderList';
 import {
   ClipboardTextIcon,
   BoxIcon,
@@ -24,6 +25,7 @@ interface OrderRequestCardProps {
   // While an accept/decline request is in flight: dims and disables both
   // buttons so a tap always gives visible feedback, even on a slow network.
   busy?: boolean;
+  acceptDisabled?: boolean;
   // false hides the Decline/Accept row, for when a parent (e.g. the floating
   // sheet) shows those buttons itself.
   showActions?: boolean;
@@ -68,6 +70,7 @@ export default function OrderRequestCard({
   onViewLocation,
   onFlag,
   busy = false,
+  acceptDisabled = false,
   showActions = true,
   secondsLeft: secondsLeftProp,
 }: OrderRequestCardProps) {
@@ -93,7 +96,7 @@ export default function OrderRequestCard({
               <Text style={[styles.countdownText, urgent && styles.countdownTextUrgent]}>{secondsLeft}s</Text>
             </View>
           )}
-          <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
+          <Text style={styles.tip}>+ ₵ {formatMinor(order.earnings)}</Text>
         </View>
       </View>
 
@@ -106,8 +109,8 @@ export default function OrderRequestCard({
           <View style={styles.rowLeft}>
             <BoxIcon />
             <Text style={styles.cylinderCount}>
-              {order.cylinderCount}{' '}
-              <Text style={styles.cylinderCountMuted}>cylinder{order.cylinderCount > 1 ? 's' : ''}</Text>
+              {order.cylinders.length}{' '}
+              <Text style={styles.cylinderCountMuted}>cylinder{order.cylinders.length > 1 ? 's' : ''}</Text>
             </Text>
           </View>
         </View>
@@ -143,19 +146,14 @@ export default function OrderRequestCard({
 
         <DashedDivider />
 
-        <View style={styles.row}>
-          <View style={styles.detailLeft}>
-            <View style={[styles.iconBox, styles.cylinderIconBox]}>
-              <Image
-                source={require('../assets/images/order-card/cylinder.png')}
-                style={styles.cylinderImage}
-                resizeMode="contain"
-              />
-            </View>
-            <Text style={styles.sizeLabel}>{order.cylinderSize} Size</Text>
+        <CylinderList cylinders={order.cylinders} />
+
+        {order.cylinders.length > 1 && (
+          <View style={styles.row}>
+            <Text style={styles.sizeLabel}>Total gas</Text>
+            <Text style={styles.amount}>₵ {formatMinor(order.amount)}</Text>
           </View>
-          <Text style={styles.amount}>₵ {formatMinor(order.amount)}</Text>
-        </View>
+        )}
 
         {showActions && (
           <View style={styles.actionsRow}>
@@ -172,9 +170,9 @@ export default function OrderRequestCard({
               <Text style={styles.declineText}>Decline</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.acceptButton, disabled && styles.buttonBusy]}
+              style={[styles.acceptButton, (disabled || acceptDisabled) && styles.buttonBusy]}
               onPress={onAccept}
-              disabled={disabled}
+              disabled={disabled || acceptDisabled}
             >
               <Text style={styles.acceptText}>Accept</Text>
             </TouchableOpacity>
@@ -286,14 +284,6 @@ const styles = StyleSheet.create({
     padding: 8,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  cylinderIconBox: {
-    width: 32,
-    height: 32,
-  },
-  cylinderImage: {
-    width: 10,
-    height: 16,
   },
   detailLabel: {
     fontSize: 12,

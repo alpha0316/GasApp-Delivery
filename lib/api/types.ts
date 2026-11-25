@@ -2,7 +2,7 @@
 export type Role = 'customer' | 'rider' | 'admin';
 export type CylinderSize = 'small' | 'medium' | 'large';
 export type PaymentMethod = 'paystack' | 'cash';
-export type VehicleType = 'motorbike' | 'tricycle' | 'car' | 'bicycle';
+export type VehicleType = 'motorbike' | 'tricycle' | 'car' | 'truck' | 'bicycle';
 export type RiderStatus = 'offline' | 'available' | 'on_delivery';
 
 export type OrderStatus =
@@ -88,6 +88,16 @@ export interface CustomerContact {
   phoneNumber?: string;
 }
 
+// One cylinder in an order: its size and how much gas the customer wants in it.
+// PROPOSED backend field (not in the API yet): until the backend sends
+// `cylinders`, the app splits the order evenly from cylinderSize/cylinderCount.
+export interface ApiCylinder {
+  size: CylinderSize;
+  // Gas to fill, minor units (pesewas).
+  fillAmount: number;
+  isFullFill?: boolean;
+}
+
 export interface ApiOrder {
   id: string;
   // Populated with contact fields on GET /rider/orders. A plain id in the pool list.
@@ -95,6 +105,8 @@ export interface ApiOrder {
   cylinderSize: CylinderSize;
   cylinderCount: number;
   isFullFill: boolean;
+  // Per-cylinder sizes and fill amounts, when one order mixes sizes or amounts.
+  cylinders?: ApiCylinder[];
   deliveryAddress: { label: string; lat: number; lng: number };
   riderInstructions: string;
   stationId: string;

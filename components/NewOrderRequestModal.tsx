@@ -17,6 +17,12 @@ interface NewOrderRequestModalProps {
   onDismiss: () => void;
   onFlag?: () => void;
   busy?: boolean;
+  acceptDisabled?: boolean;
+  onTopUp?: () => void;
+  // Copy overrides, e.g. mid-delivery: "Add to Run" / "Refer to Riders".
+  subtitle?: string;
+  acceptLabel?: string;
+  declineLabel?: string;
 }
 
 export default function NewOrderRequestModal({ visible, order, ...rest }: NewOrderRequestModalProps) {
@@ -35,6 +41,11 @@ function OrderRequestSheet({
   onDismiss,
   onFlag,
   busy = false,
+  acceptDisabled = false,
+  onTopUp,
+  subtitle = 'You can queue this for after your current delivery or decline it.',
+  acceptLabel = 'Accept',
+  declineLabel = 'Decline',
 }: Omit<NewOrderRequestModalProps, 'visible' | 'order'> & { order: Order }) {
   const secondsLeft = useOfferCountdown(offerExpiresAt, onDecline);
   // Lock the buttons as soon as the window closes, without waiting for the
@@ -75,14 +86,18 @@ function OrderRequestSheet({
               <FlagIcon />
             </TouchableOpacity>
           )}
-          <SheetButton title="Decline" variant="destructive" onPress={once(onDecline)} disabled={disabled} />
-          <SheetButton title="Accept" variant="success" onPress={once(onAccept)} disabled={disabled} />
+          <SheetButton title={declineLabel} variant="destructive" onPress={once(onDecline)} disabled={disabled} />
+          {acceptDisabled && onTopUp ? (
+            <SheetButton title="Top up wallet" variant="primary" onPress={onTopUp} />
+          ) : (
+            <SheetButton title={acceptLabel} variant="success" onPress={once(onAccept)} disabled={disabled} />
+          )}
         </>
       }
     >
       <View style={styles.titleGroup}>
         <Text style={styles.title}>New Order Request</Text>
-        <Text style={styles.subtitle}>You can queue this for after your current delivery or decline it.</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
       </View>
 
       <View style={styles.cardWrap}>
@@ -94,6 +109,7 @@ function OrderRequestSheet({
           onDecline={onDecline}
           showActions={false}
           busy={busy}
+          acceptDisabled={acceptDisabled}
         />
       </View>
     </FloatingSheet>

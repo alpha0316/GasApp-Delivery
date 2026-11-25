@@ -7,7 +7,7 @@ import { Order } from '../types/order';
 
 export type QueuedOrder = Pick<
   Order,
-  'customerName' | 'customerPhone' | 'tip' | 'cylinderCount' | 'cylinderSize' | 'amount' | 'dropoffAddress'
+  'customerName' | 'customerPhone' | 'earnings' | 'cylinderCount' | 'cylinderSize' | 'amount' | 'dropoffAddress'
 >;
 
 interface ActiveQueueOrderCardProps {
@@ -39,7 +39,7 @@ export default function ActiveQueueOrderCard({ order, canRefer, onRefer, onViewO
           </Text>
           {!!order.customerPhone && <Text style={styles.phone}>{order.customerPhone}</Text>}
         </View>
-        <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
+        <Text style={styles.tip}>+ ₵ {formatMinor(order.earnings)}</Text>
         <View style={!expanded && styles.caretCollapsed}>
           <CaretDown size={18} color="rgba(0,0,0,0.6)" />
         </View>

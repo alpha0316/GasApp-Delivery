@@ -6,9 +6,10 @@ describe('riderModeFor', () => {
     expect(riderModeFor('bicycle')).toBe('single');
   });
 
-  it('puts tricycle and car riders in batch mode', () => {
+  it('puts tricycle, car and truck riders in batch mode', () => {
     expect(riderModeFor('tricycle')).toBe('batch');
     expect(riderModeFor('car')).toBe('batch');
+    expect(riderModeFor('truck')).toBe('batch');
   });
 
   it('defaults to single mode before a vehicle is chosen', () => {

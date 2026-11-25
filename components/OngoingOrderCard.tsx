@@ -6,7 +6,7 @@ import { Order } from '../types/order';
 
 export type OngoingOrder = Pick<
   Order,
-  'customerName' | 'customerPhone' | 'tip' | 'cylinderCount' | 'cylinderSize' | 'amount' | 'fillingStationName' | 'dropoffAddress'
+  'customerName' | 'customerPhone' | 'earnings' | 'cylinderCount' | 'cylinderSize' | 'amount' | 'fillingStationName' | 'dropoffAddress'
 >;
 
 interface OngoingOrderCardProps {
@@ -29,7 +29,7 @@ export default function OngoingOrderCard({ order, onReturn }: OngoingOrderCardPr
           </Text>
           {!!order.customerPhone && <Text style={styles.phone}>{order.customerPhone}</Text>}
         </View>
-        <Text style={styles.tip}>+ ₵ {formatMinor(order.tip ?? 0)}</Text>
+        <Text style={styles.tip}>+ ₵ {formatMinor(order.earnings)}</Text>
       </View>
 
       <View style={styles.card}>

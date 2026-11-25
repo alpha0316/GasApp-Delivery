@@ -8,6 +8,7 @@ import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ScenarioSwitcher from '../components/dev/ScenarioSwitcher';
+import { ToastHost } from '../components/Toast';
 import RiderSession from '../features/auth/RiderSession';
 import { useAuthStore } from '../features/auth/store';
 import { queryClient } from '../lib/query/queryClient';
@@ -41,6 +42,7 @@ export default function RootLayout() {
           {status === 'signedIn' && approved && <RiderSession />}
           <Stack screenOptions={{ headerShown: false }} />
           {status === 'signedIn' && approved && <ScenarioSwitcher />}
+          <ToastHost />
         </GestureHandlerRootView>
       </QueryClientProvider>
     </SafeAreaProvider>

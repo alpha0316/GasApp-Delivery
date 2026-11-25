@@ -59,3 +59,10 @@ export async function advanceThrough(
   }
   return latest;
 }
+
+// A one-order-at-a-time rider (motorbike) works the order already under way;
+// anything else they hold is queued behind it. With none under way, the first
+// active order (the server's order) is next.
+export function currentSingleOrder<T extends Pick<ApiOrder, 'status'>>(activeOrders: T[]): T | undefined {
+  return activeOrders.find((o) => o.status !== 'rider_assigned') ?? activeOrders[0];
+}
